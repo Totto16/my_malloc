@@ -213,8 +213,9 @@ static bool __my_malloc_block_fitsBetter(BlockInformation* toCompare,
 }
 
 void* my_malloc(uint64_t size) {
-	// TODO: if the size is to high for that, than use mmap to get another block, with doubel
-	// TODO: pointers the whole alloced region doesn't have to be continous
+	// TODO: if the size is to high for that, than use mmap to get another block, with double
+	// TODO: pointers the whole allocated region doesn't have to be continuous, check if nothing
+	// TODO: expects that to be the case, especially the sizeof block or similar functions!
 
 	// calling my_malloc without initializing the allocator doesn't work
 	if(__my_malloc_globalObject.data == NULL) {
@@ -232,7 +233,7 @@ void* my_malloc(uint64_t size) {
 	BlockInformation* nextFreeBlock = (BlockInformation*)bestFit->nextBlock;
 
 	while(nextFreeBlock != NULL) {
-		// WIP!!!!!
+		// TODO: this is extremely slow, this WIP tries to make some cases faster!!
 
 		/* 	SIZE_OF_DOUBLE_POINTER_BLOCK(blockSize, bestFit);
 		    if(blockSize + sizeof(BlockInformation) <= size) {
@@ -347,15 +348,11 @@ void my_free(void* ptr) {
 	}
 #endif
 	information->status.alloc_state = FREE;
-	// TODO: check if ptr has to be ptr or ptr - sizeof(BlockInformation)
 	VALGRIND_FREE(ptr, 0);
 
 	BlockInformation* nextBlock = (BlockInformation*)information->nextBlock;
 	BlockInformation* previousBlock = (BlockInformation*)information->previousBlock;
 
-	// no this occurs in the memset of the tests, it overwrites the region the pointer is stored!
-	// TODO: in my_malloc some off by one error occurs!! (or the next block isn't checked properly
-	// for NULL!)
 	if((pseudoByte*)previousBlock >
 	   (pseudoByte*)__my_malloc_globalObject.data + __my_malloc_globalObject.dataSize) {
 		return;
@@ -459,6 +456,18 @@ void my_allocator_init(uint64_t size) {
 	    "INTERNAL: An Error occurred while trying to register the atexit function");
 }
 
+// TODO: add realloc and was_alloced helper function
+bool was_malloced(void* ptr) {
+	(void)ptr;
+	return false;
+}
+
+void* my_realloc(void* ptr, uint64_t size) {
+	(void)ptr;
+	(void)size;
+	return NULL;
+}
+
 void my_allocator_destroy(void) {
 	if(__my_malloc_globalObject.data == NULL) {
 		return;
@@ -476,6 +485,3 @@ void my_allocator_destroy(void) {
 	    "INTERNAL: An Error occurred while trying to destroy the internal mutex "
 	    "in cleaning up for the allocator");
 }
-
-// NOTE: this is extremely slow for some reason!!
-// TODO: add realloc and was_alloced helper function

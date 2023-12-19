@@ -54,9 +54,9 @@ typedef struct {
 } status_t;
 
 typedef struct {
-	status_t status;
 	void* nextBlock;
 	void* previousBlock;
+	status_t status;
 } BlockInformation;
 
 #define SIZE_OF_DOUBLE_POINTER_BLOCK(variableName, block) \

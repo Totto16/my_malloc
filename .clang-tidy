@@ -1,0 +1,7 @@
+# taken from https://github.com/cpp-linter/cpp-linter-action/blob/main/demo/.clang-tidy and modified
+---
+Checks: "clang-diagnostic-*,clang-analyzer-*,readability-*,modernize-*,bugprone-*,misc-*,google-runtime-int,llvm-header-guard,fuchsia-restrict-system-includes,-clang-analyzer-valist.Uninitialized,-clang-analyzer-security.insecureAPI.rand,-clang-analyzer-alpha.*,-readability-magic-numbers,-readability-non-const-parameter,-readability-avoid-const-params-in-decls,-readability-else-after-return,-readability-isolate-declaration,-readability-uppercase-literal-suffix,-bugprone-sizeof-expression,-bugprone-easily-swappable-parameters,-readability-identifier-length,-misc-no-recursion,-readability-function-cognitive-complexity,-readability-magic-numbers,-misc-include-cleaner,-bugprone-reserved-identifier,-readability-implicit-bool-conversion,-llvm-header-guard"
+WarningsAsErrors: "bugprone-branch-clone"
+AnalyzeTemporaryDtors: false
+FormatStyle: "file"
+HeaderFilterRegex: "src/.*"

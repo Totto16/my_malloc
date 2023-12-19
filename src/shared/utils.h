@@ -48,7 +48,7 @@
 // simple error helper macro, with some more used "overloads"
 #define checkForError(toCheck, errorString, statement) \
 	do { \
-		if(toCheck == -1) { \
+		if((toCheck) == -1) { \
 			fprintf(stderr, "%s: %s\n", errorString, strerror(errno)); \
 			statement; \
 		} \
@@ -56,7 +56,7 @@
 
 #define checkForThreadError(toCheck, errorString, statement) \
 	do { \
-		if(toCheck != 0) { \
+		if((toCheck) != 0) { \
 			/*pthread function don't set errno, but return the error value \
 			 * directly*/ \
 			fprintf(stderr, "%s: %s\n", errorString, strerror(toCheck)); \

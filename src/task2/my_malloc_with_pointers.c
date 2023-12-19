@@ -43,10 +43,10 @@ typedef uint8_t pseudoByte;
 
 // FREE is 0, so each mmap (so initialized to 0) region has set every block to FREE
 enum __my_malloc_alloc_status {
-	FREE = 0b0,
-	ALLOCED = 0b1,
+	FREE = 0,
+	ALLOCED = 1,
 };
-enum __my_malloc_fill_status { FULLY_FILLED = 0b0, NOT_FULLY_FILLED = 0b1 };
+enum __my_malloc_fill_status { FULLY_FILLED = 0, NOT_FULLY_FILLED = 1 };
 
 typedef struct {
 	uint8_t alloc_state : 1;
@@ -62,16 +62,16 @@ typedef struct {
 #define SIZE_OF_DOUBLE_POINTER_BLOCK(variableName, block) \
 	uint64_t variableName; \
 	do { \
-		if(block == NULL) { \
+		if((block) == NULL) { \
 			printSingleErrorAndExit( \
 			    "INTERNAL: This is an allocator ERROR, this shouldn't occur!\n"); \
-		} else if(block->nextBlock == NULL) { \
-			variableName = (pseudoByte*)__my_malloc_globalObject.data + \
-			               __my_malloc_globalObject.dataSize - sizeof(BlockInformation) - \
-			               (pseudoByte*)block; \
+		} else if((block)->nextBlock == NULL) { \
+			(variableName) = (pseudoByte*)__my_malloc_globalObject.data + \
+			                 __my_malloc_globalObject.dataSize - sizeof(BlockInformation) - \
+			                 (pseudoByte*)(block); \
 		} else { \
-			variableName = \
-			    ((pseudoByte*)block->nextBlock) - (pseudoByte*)block - sizeof(BlockInformation); \
+			(variableName) = ((pseudoByte*)(block)->nextBlock) - (pseudoByte*)(block) - \
+			                 sizeof(BlockInformation); \
 		} \
 	} while(false)
 

@@ -5,13 +5,13 @@
 
 #include "allocator_tests.h"
 
-// from:
-// https://stackoverflow.com/questions/777261/avoiding-unused-variables-warnings-when-using-ASSERT-in-a-release-build
-
 #ifdef NDEBUG
 #define ASSERT(x) \
 	do { \
-		(void)sizeof(x); \
+		if(!x) { \
+			fprintf(stderr, "ASSERTION ERROR: %s: %s\n", __FILE__, __LINE__); \
+			exit(1); \
+		} \
 	} while(0)
 #else
 #include <assert.h>

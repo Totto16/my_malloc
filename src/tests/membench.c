@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <inttypes.h>
 #include <pthread.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -10,8 +11,8 @@
 
 #include "membench.h"
 
-#define POOL_SIZE (1024 * 1024 * 128)
-#define MAX_ALLOC_MULTIPLIER 4
+#define POOL_SIZE ((uint64_t)(1024U * 1024U * 128U))
+#define MAX_ALLOC_MULTIPLIER 4U
 
 typedef struct {
 	uint64_t num_allocations;
@@ -92,17 +93,17 @@ static void* thread_fn(void* arg) {
 	return (void*)(intptr_t)(after - before);
 }
 
-static double run_config(uint64_t num_threads, thread_context* ctx) {
+static double run_config(uint32_t num_threads, thread_context* ctx) {
 	pthread_t thread_ids[num_threads];
-	for(uint64_t i = 0; i < num_threads; ++i) {
+	for(uint32_t i = 0; i < num_threads; ++i) {
 		pthread_create(&thread_ids[i], NULL, thread_fn, ctx);
 	}
 
 	double time_sum = 0.0;
-	for(uint64_t i = 0; i < num_threads; ++i) {
+	for(uint32_t i = 0; i < num_threads; ++i) {
 		intptr_t delta_time;
 		pthread_join(thread_ids[i], (void**)&delta_time);
-		time_sum += delta_time;
+		time_sum += (double)delta_time;
 	}
 
 	return time_sum / num_threads / 1000.0;
@@ -120,7 +121,7 @@ static void run_membench(init_allocator_fn my_init, destroy_allocator_fn my_dest
 	const uint64_t num_configs = sizeof(configs) / sizeof(uint64_t[3]);
 
 	for(uint64_t i = 0; i < num_configs; ++i) {
-		const uint64_t num_threads = configs[i][0];
+		const uint32_t num_threads = configs[i][0];
 		const uint64_t num_allocations = configs[i][1];
 		const uint64_t alloc_size = configs[i][2];
 		thread_context system_ctx = { .num_allocations = num_allocations,
@@ -136,7 +137,8 @@ static void run_membench(init_allocator_fn my_init, destroy_allocator_fn my_dest
 			                          .my_malloc = my_malloc,
 			                          .my_free = my_free };
 
-		printf("%zu thread(s), %zu allocations of size %zu - %zu byte per thread. Avg time per "
+		printf("%" PRIu32 " thread(s), %" PRIu64 " allocations of size %" PRIu64 " - %" PRIu64
+		       " byte per thread. Avg time per "
 		       "thread:\n",
 		       num_threads, num_allocations, alloc_size, alloc_size * MAX_ALLOC_MULTIPLIER);
 		printf("\tSystem: %.2lf ms\n", run_config(num_threads, &system_ctx));

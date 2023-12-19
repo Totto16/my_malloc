@@ -1,3 +1,4 @@
+#include <inttypes.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,7 +19,7 @@
 #define ASSERT(x) assert(x)
 #endif
 
-#define POOL_SIZE (1024 * 1024 * 256)
+#define POOL_SIZE ((uint64_t)(1024U * 1024U * 256U))
 
 void test_free_list_allocator(void) {
 	my_allocator_init(POOL_SIZE);
@@ -36,7 +37,8 @@ void test_free_list_allocator(void) {
 	printf("ptr2: %p\n", ptr2);
 
 	const uint64_t block_size = (ptrdiff_t)ptr2 - (ptrdiff_t)ptr1 - sizeof(void*);
-	printf("block size is: %zu (assuming header size %zu)\n", block_size, sizeof(void*));
+	printf("block size is: %" PRIu64 " (assuming header size %" PRIu64 ")\n", block_size,
+	       sizeof(void*));
 
 	my_free(ptr1);
 	void* const ptr3 = my_malloc(block_size);

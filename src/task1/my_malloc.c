@@ -11,7 +11,7 @@ Module: PS OS 10
 #include <stdlib.h>
 #include <sys/mman.h>
 
-#include "../shared/utils.h"
+#include <utils.h>
 
 // statically defined Block Size
 #define BLOCK_SIZE 1024

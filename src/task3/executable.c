@@ -6,7 +6,7 @@ Module: PS OS 10
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "../tests/membench.h"
+#include <membench.h>
 
 // simple preprocessor checker for valid value!
 #if !defined(_MALLOC)
@@ -22,9 +22,9 @@ Module: PS OS 10
 // define for which malloc to use, either free_list or best_fit, these two headers are the same, but
 // can theoretically have something different in it!
 #if _MALLOC == 0
-#include "../task1/my_malloc.h"
+#include <task1/my_malloc.h>
 #elif _MALLOC == 1
-#include "../task2/my_malloc.h"
+#include <task2/my_malloc.h>
 #endif
 
 // this main executes the tests and the membench, it has to be linked with the necessary .c files it

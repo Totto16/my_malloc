@@ -10,7 +10,7 @@ Module: PS OS 10
 #include <stdlib.h>
 #include <sys/mman.h>
 
-#include "../shared/utils.h"
+#include <utils.h>
 
 #if !defined(_USE_POINTERS)
 #define _USE_POINTERS 2

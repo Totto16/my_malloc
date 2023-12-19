@@ -10,7 +10,7 @@ Module: PS OS 10
 #include <stdlib.h>
 #include <sys/mman.h>
 
-#include "../shared/utils.h"
+#include <utils.h>
 
 // some possible configurations, these can be done with defines during compilation
 #if !defined(_USE_BIFIELDS)

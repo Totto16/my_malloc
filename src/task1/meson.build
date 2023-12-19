@@ -5,7 +5,7 @@ task1_deps += membench_dep
 task1_deps += allocator_tests_dep
 
 executable(
-    'executable',
+    'tests',
     files('executable.c', 'my_malloc.c'),
     dependencies: task1_deps,
     include_directories: inc_dirs,
@@ -14,7 +14,7 @@ executable(
 
 # TODO: this isn't working correctly, since membench crashes !
 executable(
-    'thread_local_executable',
+    'thread_local_tests',
     files('executable.c', 'my_malloc.c'),
     dependencies: task1_deps,
     include_directories: inc_dirs,

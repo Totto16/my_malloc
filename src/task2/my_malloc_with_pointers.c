@@ -413,6 +413,19 @@ void my_allocator_init(uint64_t size) {
 	// this region is initalized with 0s
 	__my_malloc_globalObject.data =
 	    mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+	// see: https://github.com/torvalds/linux/blob/master/tools/include/nolibc/sys.h#L698-L708
+	// example:
+	// https://github.com/Apress/low-level-programming/blob/master/listings/chap4/mmap/mmap.asm
+	// with sysvall, the result is an address, but with this you can check for errors!
+
+	/* 0xfffffffffffff000
+
+	if ((unsigned long)ret >= -4095UL) { // 0xfffffffffffff000
+	    SET_ERRNO(-(long)ret);
+	    ret = MAP_FAILED;
+	}
+	 */
 	if(__my_malloc_globalObject.data == MAP_FAILED) {
 		__my_malloc_globalObject.data = NULL;
 		__my_malloc_globalObject.dataSize = 0;
@@ -428,6 +441,14 @@ void my_allocator_init(uint64_t size) {
 	int result = pthread_mutex_init(&__my_malloc_globalObject.mutex, NULL);
 	checkResultForThreadErrorAndExit("INTERNAL: An Error occurred while trying to initializing the "
 	                                 "internal mutex for the allocator");
+
+	// initialize the first block, this sets everything to 0, but that isn't guaranteed in teh
+	// future and atm this is already done by mmap
+	BlockInformation* firstBlock = (BlockInformation*)__my_malloc_globalObject.data;
+	firstBlock->nextBlock = NULL;
+	firstBlock->previousBlock = NULL;
+	firstBlock->status.alloc_state = FREE;
+	firstBlock->status.fill_state = FULLY_FILLED;
 
 	result = atexit(my_allocator_destroy);
 	checkResultForThreadErrorAndExit(

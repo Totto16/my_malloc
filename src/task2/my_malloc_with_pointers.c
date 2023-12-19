@@ -5,6 +5,7 @@ Module: PS OS 10
 
 #include <errno.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -38,12 +39,19 @@ Module: PS OS 10
 // that it doesn't pollute the global scope additionally these are made static! (meaning no outside
 // file can see them, on global variables this only makes them inivisible to other files )
 
-typedef uint8_t status_t;
-
 typedef uint8_t pseudoByte;
 
 // FREE is 0, so each mmap (so initialized to 0) region has set every block to FREE
-enum __my_malloc_status { FREE = 0, ALLOCED = 1 };
+enum __my_malloc_alloc_status {
+	FREE = 0b0,
+	ALLOCED = 0b1,
+};
+enum __my_malloc_fill_status { FULLY_FILLED = 0b0, NOT_FULLY_FILLED = 0b1 };
+
+typedef struct {
+	uint8_t alloc_state : 1;
+	uint8_t fill_state : 1;
+} status_t;
 
 typedef struct {
 	status_t status;
@@ -94,7 +102,10 @@ static bool __my_malloc_isValidBlock(void* blockPointer) {
 	}
 
 	BlockInformation* blockInformation = ((BlockInformation*)blockPointer);
-	bool hasValidStatus = blockInformation->status == FREE || blockInformation->status == ALLOCED;
+	bool hasValidStatus = ((blockInformation->status.alloc_state) == FREE ||
+	                       (blockInformation->status.alloc_state) == ALLOCED) &&
+	                      ((blockInformation->status.fill_state) == FULLY_FILLED ||
+	                       (blockInformation->status.fill_state) == NOT_FULLY_FILLED);
 
 	bool nextIsInRange =
 	    ((blockInformation->nextBlock == NULL ||
@@ -143,8 +154,9 @@ static void __my_malloc_debug_printSegment(char* desc, BlockInformation* informa
 #endif
 
 	SIZE_OF_DOUBLE_POINTER_BLOCK(blockSize, information);
-	printf("%s%sBlock: |%c| %ld -> %s\n", desc != NULL ? "\n" : "\t", desc != NULL ? desc : "",
-	       information->status == FREE ? ' ' : '#', blockSize,
+	printf("%s%sBlock: |%c|%c| %ld -> %s\n", desc != NULL ? "\n" : "\t", desc != NULL ? desc : "",
+	       (information->status.alloc_state) == FREE ? ' ' : '#',
+	       (information->status.fill_state) == FULLY_FILLED ? 'F' : ' ', blockSize,
 	       information->nextBlock == NULL ? "END\n" : "next");
 	if(information->nextBlock != NULL) {
 		__my_malloc_debug_printSegment(NULL, information->nextBlock);
@@ -156,11 +168,11 @@ static void __my_malloc_debug_printSegment(char* desc, BlockInformation* informa
 static bool __my_malloc_block_fitsBetter(BlockInformation* toCompare,
                                          BlockInformation* currentBlock, uint64_t size) {
 
-	if(toCompare->status != FREE) {
+	if(toCompare->status.alloc_state != FREE) {
 		return false;
 	}
 
-	if(currentBlock->status != FREE) {
+	if(currentBlock->status.alloc_state != FREE) {
 		return true;
 	}
 
@@ -197,7 +209,7 @@ static bool __my_malloc_block_fitsBetter(BlockInformation* toCompare,
 			return false;
 		}
 	}
-	return blockSize - size < currentSize - size;
+	return (blockSize - size) < (currentSize - size);
 }
 
 void* my_malloc(uint64_t size) {
@@ -249,7 +261,7 @@ void* my_malloc(uint64_t size) {
 	if(bestFit == NULL || blockSize < size ||
 	   (blockSize != size && blockSize < size + sizeof(BlockInformation) &&
 	    bestFit->nextBlock == NULL) ||
-	   bestFit->status != FREE) {
+	   bestFit->status.alloc_state != FREE) {
 
 		result = pthread_mutex_unlock(&__my_malloc_globalObject.mutex);
 		checkResultForThreadErrorAndExit("INTERNAL: An Error occurred while trying to "
@@ -266,23 +278,29 @@ void* my_malloc(uint64_t size) {
 	if(blockSize == size) {
 		// block size and size needed for allocation is the same, only need to set the status to
 		// allocated
-		bestFit->status = ALLOCED;
+
+		bestFit->status.alloc_state = ALLOCED;
+		bestFit->status.fill_state = FULLY_FILLED;
 	} else if(blockSize - size < sizeof(BlockInformation)) {
 		// block size and size needed for allocation is nearly the same, but can't allocate a new
 		// block at the end, since it hasn't enough space for another BlockInformation, so only need
 		// to set the status to allocated, but some size is wasted
-		bestFit->status = ALLOCED;
+
+		bestFit->status.alloc_state = ALLOCED;
+		bestFit->status.fill_state = NOT_FULLY_FILLED;
 
 	} else {
 		BlockInformation* newBlock =
 		    (BlockInformation*)((pseudoByte*)bestFit + sizeof(BlockInformation) + size);
 		MEMCHECK_DEFINE_INTERNAL_USE(newBlock, sizeof(BlockInformation));
 
-		newBlock->status = FREE;
+		newBlock->status.alloc_state = FREE;
 		newBlock->nextBlock = bestFit->nextBlock; // can be NULL
 		newBlock->previousBlock = bestFit;
 
-		bestFit->status = ALLOCED;
+		bestFit->status.alloc_state = ALLOCED;
+		bestFit->status.fill_state = FULLY_FILLED;
+
 		bestFit->nextBlock = newBlock;
 	}
 
@@ -324,11 +342,11 @@ void my_free(void* ptr) {
 #endif
 #if !defined(_IGNORE_SECURITY_CHECKS)
 
-	if(information->status == FREE) {
+	if(information->status.alloc_state == FREE) {
 		printErrorAndExit("INTERNAL: you tried to free a already freed Block: %p\n", ptr);
 	}
 #endif
-	information->status = FREE;
+	information->status.alloc_state = FREE;
 	// TODO: check if ptr has to be ptr or ptr - sizeof(BlockInformation)
 	VALGRIND_FREE(ptr, 0);
 
@@ -344,10 +362,10 @@ void my_free(void* ptr) {
 	}
 
 	// merge with previous free block
-	if(previousBlock != NULL && previousBlock->status == FREE) {
+	if(previousBlock != NULL && previousBlock->status.alloc_state == FREE) {
 
 		// MERGE three free blocks into one: layout Previous | Current | Next => New Free one
-		if(nextBlock != NULL && nextBlock->status == FREE) {
+		if(nextBlock != NULL && nextBlock->status.alloc_state == FREE) {
 			previousBlock->nextBlock = nextBlock->nextBlock;
 
 			if(nextBlock->nextBlock != NULL) {
@@ -357,13 +375,15 @@ void my_free(void* ptr) {
 		} else {
 
 			previousBlock->nextBlock = nextBlock; // can be NULL
-			nextBlock->previousBlock = previousBlock;
+			if(nextBlock != NULL) {
+				nextBlock->previousBlock = previousBlock;
+			}
 		}
 
 		MEMCHECK_REMOVE_INTERNAL_USE(information, sizeof(BlockInformation));
 
 		// merge next free block with current one
-	} else if(nextBlock != NULL && nextBlock->status == FREE) {
+	} else if(nextBlock != NULL && nextBlock->status.alloc_state == FREE) {
 		information->nextBlock = nextBlock->nextBlock; // can be NULL
 
 		if(nextBlock->nextBlock != NULL) {

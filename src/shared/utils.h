@@ -104,7 +104,7 @@ long parseLongSafely(const char* toParse, const char* description);
 
 #define anyType(type) /* Type helper for readability */ any
 
-#if defined(_WITH_VALGRIND) && _WITH_VALGRIND == 1
+#if defined(_WITH_VALGRIND) && _WITH_VALGRIND == 1 && defined(_WANT_TO_USE_VALGRIND)
 
 // IF Valgrind is included
 

@@ -9,9 +9,9 @@ Module: PS OS 10
 
 #include "my_malloc.h"
 
-#include "../tests/allocator_tests.h"
+#include <allocator_tests.h>
 
-#include "../tests/membench.h"
+#include <membench.h>
 
 // prints the usage, if argc is not the right amount!
 void printUsage(const char* programName) {
@@ -19,7 +19,7 @@ void printUsage(const char* programName) {
 }
 
 // this main executes the tests and the membench, it has to be linked with the three .c files it
-// requires namely "my_malloc.c", "../tests/allocator_tests.c", "../tests/membench.c"
+// requires namely "my_malloc.c", "allocator_tests.c", "membench.c"
 // you can choose which mode to run with the command line parameter
 int main(int argc, char const* argv[]) {
 

@@ -16,15 +16,6 @@ Module: PS OS 10
 
 #include "my_malloc.h"
 
-#if !defined(_USE_POINTERS)
-#define _USE_POINTERS 2
-#endif
-
-#if _USE_POINTERS < 1 || _USE_POINTERS > 2
-// this is a c preprocessor macro, it throws a compiler error with the given message
-#error "NOT SUPPORTED USE_POINTERS: not between 1 and 2!"
-#endif
-
 #if !defined(_VALIDATE_BLOCKS)
 #define _VALIDATE_BLOCKS 0
 #endif
@@ -54,7 +45,6 @@ typedef uint8_t pseudoByte;
 // FREE is 0, so each mmap (so initialized to 0) region has set every block to FREE
 enum __my_malloc_status { FREE = 0, ALLOCED = 1 };
 
-#if _USE_POINTERS == 2
 typedef struct {
 	status_t status;
 	void* nextBlock;
@@ -76,8 +66,6 @@ typedef struct {
 			    ((pseudoByte*)block->nextBlock) - (pseudoByte*)block - sizeof(BlockInformation); \
 		} \
 	} while(false)
-
-#endif
 
 typedef struct {
 	void* data;
@@ -144,7 +132,7 @@ static bool __my_malloc_isValidBlock(void* blockPointer) {
 #endif
 
 // DEBUG
-#if _USE_POINTERS == 2 && _PRINT_DEBUG == 1
+#if _PRINT_DEBUG == 1
 static void __my_malloc_debug_printSegment(char* desc, BlockInformation* information);
 
 static void __my_malloc_debug_printSegment(char* desc, BlockInformation* information) {

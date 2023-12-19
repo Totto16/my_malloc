@@ -49,7 +49,7 @@ typedef struct {
 // "cheating" since the pointer to the nextFreeBlock is stored here :)
 typedef struct {
 	void* data;
-	size_t dataSize;
+	uint64_t dataSize;
 	pthread_mutex_t mutex;
 	void* nextFreeBlock;
 } GlobalObject;
@@ -81,7 +81,7 @@ static bool __my_malloc_isValidBlock(void* blockPointer) {
 // returned, rather then allocating more memory, this malloc can't grow it's internal buffer
 // dynamically!
 
-void* my_malloc(size_t size) {
+void* my_malloc(uint64_t size) {
 	if(size > BLOCK_SIZE) {
 		return NULL;
 	}
@@ -115,7 +115,7 @@ void* my_malloc(size_t size) {
 	// now adjust the nextFreeBlock, this is done by iterating over all available Blocks and then
 	// seeing if the block is free, this is really simple, because the size of the blocks is
 	// constanly BLOCK_SIZE
-	size_t dataLength = BLOCK_SIZE + sizeof(BlockInformation);
+	uint64_t dataLength = BLOCK_SIZE + sizeof(BlockInformation);
 	pseudoByte* nextFreeBlock = (pseudoByte*)allocedBlock + dataLength;
 	while(true) {
 		// if no more block is free it's NULL
@@ -177,18 +177,18 @@ void my_free(void* ptr) {
 	    "INTERNAL: An Error occurred while trying to unlock the internal allocator mutex");
 }
 
-void my_allocator_init(size_t size) {
+void my_allocator_init(uint64_t size) {
 	// first checking if the structureSize canbe stored at least one time!
-	size_t structureSize = BLOCK_SIZE + sizeof(BlockInformation);
+	uint64_t structureSize = BLOCK_SIZE + sizeof(BlockInformation);
 	if(size < structureSize) {
 		printErrorAndExit("INTERNAL: The given size to the allocator was to small for even one "
 		                  "block, given: %ld, minimal : %ld\n",
 		                  size, structureSize);
 	}
-	size_t numberOfBlocks = size / structureSize;
+	uint64_t numberOfBlocks = size / structureSize;
 	// allocate that much memory, so that the size isn't overshot, but the most blocks can be
 	// stored! also store this size globally, this is needed for the munmap later on destroying
-	size_t sizeOfMemory = numberOfBlocks * BLOCK_SIZE;
+	uint64_t sizeOfMemory = numberOfBlocks * BLOCK_SIZE;
 	__my_malloc_globalObject.dataSize = sizeOfMemory;
 
 	// MAP_ANONYMOUS means, that

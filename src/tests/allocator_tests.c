@@ -35,7 +35,7 @@ void test_free_list_allocator(void) {
 	void* const ptr2 = my_malloc(1);
 	printf("ptr2: %p\n", ptr2);
 
-	const size_t block_size = (ptrdiff_t)ptr2 - (ptrdiff_t)ptr1 - sizeof(void*);
+	const uint64_t block_size = (ptrdiff_t)ptr2 - (ptrdiff_t)ptr1 - sizeof(void*);
 	printf("block size is: %zu (assuming header size %zu)\n", block_size, sizeof(void*));
 
 	my_free(ptr1);
@@ -57,7 +57,7 @@ void test_free_list_allocator(void) {
 			break;
 		}
 	}
-	const size_t pool_size = (ptrdiff_t)end - (ptrdiff_t)base;
+	const uint64_t pool_size = (ptrdiff_t)end - (ptrdiff_t)base;
 	// This is a lower bound, as the pool may not be evenly divisible by block + header size.
 	ASSERT(pool_size <= POOL_SIZE);
 
@@ -78,7 +78,7 @@ void test_best_fit_allocator(void) {
 	printf("ptr2: %p\n", ptr2);
 	ASSERT(ptr2 > ptr1);
 	memset(ptr2, 0xFF, 1024);
-	const size_t overhead = (ptrdiff_t)ptr2 - (ptrdiff_t)ptr1 - 1024;
+	const uint64_t overhead = (ptrdiff_t)ptr2 - (ptrdiff_t)ptr1 - 1024;
 	printf("Overhead (list header size) is %zu\n", overhead);
 
 	my_free(ptr1);

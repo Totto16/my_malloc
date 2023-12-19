@@ -82,7 +82,7 @@ typedef struct {
 
 typedef struct {
 	void* data;
-	size_t dataSize;
+	uint64_t dataSize;
 	pthread_mutex_t mutex;
 } GlobalObject;
 
@@ -155,7 +155,7 @@ static BlockInformation* __my_malloc_previousBlock(BlockInformation* currentBloc
 
 // checks if the block toCompare fits better then the block currentBlock, with  requested size size
 static bool __my_malloc_block_fitsBetter(BlockInformation* toCompare,
-                                         BlockInformation* currentBlock, size_t size) {
+                                         BlockInformation* currentBlock, uint64_t size) {
 
 	if(toCompare->status != FREE) {
 		return false;
@@ -165,7 +165,7 @@ static bool __my_malloc_block_fitsBetter(BlockInformation* toCompare,
 		return true;
 	}
 
-	size_t blockSize = toCompare->size;
+	uint64_t blockSize = toCompare->size;
 	if(blockSize < size) {
 		return false;
 	}
@@ -188,7 +188,7 @@ static bool __my_malloc_block_fitsBetter(BlockInformation* toCompare,
 
 		return false;
 	}
-	size_t currentSize = currentBlock->size;
+	uint64_t currentSize = currentBlock->size;
 
 	return blockSize - size < currentSize - size;
 }
@@ -197,7 +197,7 @@ static bool __my_malloc_block_fitsBetter(BlockInformation* toCompare,
 // returned, rather then allocating more memory, this malloc can't grow it's internal buffer
 // dynamically!
 
-void* my_malloc(size_t size) {
+void* my_malloc(uint64_t size) {
 	// lock mutex, so it's thread safe!
 	int result = pthread_mutex_lock(&__my_malloc_globalObject.mutex);
 	// mutex errors are better when being asserted, since no real errors can occur, only when the
@@ -239,7 +239,7 @@ void* my_malloc(size_t size) {
 		bestFit->status = ALLOCED;
 	} else {
 		// caluclate the position of teh new block, then store there the necessary infromation
-		size_t blockSize = sizeof(BlockInformation) + size;
+		uint64_t blockSize = sizeof(BlockInformation) + size;
 		BlockInformation* newBlock = (BlockInformation*)((pseudoByte*)bestFit + blockSize);
 		newBlock->status = FREE;
 		newBlock->size = bestFit->size - blockSize;
@@ -304,7 +304,7 @@ void my_free(void* ptr) {
 	    "INTERNAL: An Error occurred while trying to unlock the internal allocator mutex");
 }
 
-void my_allocator_init(size_t size) {
+void my_allocator_init(uint64_t size) {
 	__my_malloc_globalObject.dataSize = size;
 
 	// MAP_ANONYMOUS means, that

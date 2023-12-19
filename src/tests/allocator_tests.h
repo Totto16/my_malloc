@@ -2,10 +2,11 @@
 #define ALLOCATOR_TESTS_H
 
 #include <stddef.h>
+#include <stdlib.h>
 
-void my_allocator_init(size_t);
+void my_allocator_init(uint64_t);
 void my_allocator_destroy(void);
-void* my_malloc(size_t);
+void* my_malloc(uint64_t);
 void my_free(void*);
 
 void test_free_list_allocator(void);

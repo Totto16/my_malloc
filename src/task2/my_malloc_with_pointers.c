@@ -12,6 +12,8 @@ Module: PS OS 10
 
 #include <utils.h>
 
+#include "my_malloc.h"
+
 #if !defined(_USE_POINTERS)
 #define _USE_POINTERS 2
 #endif
@@ -58,7 +60,7 @@ typedef struct {
 } BlockInformation;
 
 #define SIZE_OF_DOUBLE_POINTER_BLOCK(variableName, block) \
-	size_t variableName; \
+	uint64_t variableName; \
 	do { \
 		if(block == NULL) { \
 			printSingleErrorAndExit( \
@@ -77,12 +79,12 @@ typedef struct {
 
 typedef struct {
 	void* data;
-	size_t dataSize;
+	uint64_t dataSize;
 	pthread_mutex_t mutex;
 } GlobalObject;
 
 #if _PER_THREAD_ALLOCATOR == 0
-static GlobalObject __my_malloc_globalObject;
+static GlobalObject __my_malloc_globalObject = { .data = NULL };
 #else
 // if _PER_THREAD_ALLOCATOR is 1 it allocates one such structure per Thread, this is done with teh
 // keyword "_Thread_local" (underscore Uppercase, and double underscore  + any case are reserved
@@ -91,7 +93,7 @@ static GlobalObject __my_malloc_globalObject;
 // ATTENTION: each Thread also has to call my_allocator_init, otherwise this is NULL and I DON'T
 // check if it's NULL ANYWHERE, meaning it will crash rather instantly trying to read from or store
 // to address 0!! from the data entry in the struct, that is 0 initialized!)
-static _Thread_local GlobalObject __my_malloc_globalObject;
+static _Thread_local GlobalObject __my_malloc_globalObject = { .data = NULL };
 #endif
 
 #if _VALIDATE_BLOCKS == 1
@@ -162,7 +164,7 @@ static void __my_malloc_debug_printSegment(char* desc, BlockInformation* informa
 // DEBUG
 
 static bool __my_malloc_block_fitsBetter(BlockInformation* toCompare,
-                                         BlockInformation* currentBlock, size_t size) {
+                                         BlockInformation* currentBlock, uint64_t size) {
 
 	if(toCompare->status != FREE) {
 		return false;
@@ -208,7 +210,16 @@ static bool __my_malloc_block_fitsBetter(BlockInformation* toCompare,
 	return blockSize - size < currentSize - size;
 }
 
-void* my_malloc(size_t size) {
+void* my_malloc(uint64_t size) {
+	// TODO: if the size is to high for that, than use mmap to get another block, with doubel
+	// TODO: pointers the whole alloced region doesn't have to be continous
+
+	// calling my_malloc without initializing the allocator doesn't work
+	if(__my_malloc_globalObject.data == NULL) {
+		fprintf(stderr, "Calling malloc before initializing the allocator is prohibited!\n");
+		exit(1);
+	}
+
 	int result = pthread_mutex_lock(&__my_malloc_globalObject.mutex);
 	// mutex errors are better when being asserted, since no real errors can occur, only when the
 	// system is already malfunctioning
@@ -359,7 +370,7 @@ void my_free(void* ptr) {
 	checkResultForThreadErrorAndExit(
 	    "INTERNAL: An Error occurred while trying to unlock the internal allocator mutex");
 }
-void my_allocator_init(size_t size) {
+void my_allocator_init(uint64_t size) {
 	__my_malloc_globalObject.dataSize = size;
 
 	// MAP_ANONYMOUS means, that
@@ -372,6 +383,8 @@ void my_allocator_init(size_t size) {
 	__my_malloc_globalObject.data =
 	    mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	if(__my_malloc_globalObject.data == MAP_FAILED) {
+		__my_malloc_globalObject.data = NULL;
+		__my_malloc_globalObject.dataSize = 0;
 		printErrorAndExit("INTERNAL: Failed to mmap for the allocator: %s\n", strerror(errno));
 	}
 	// FREE is set with the 0 initialized region automatically (only here!)
@@ -384,6 +397,10 @@ void my_allocator_init(size_t size) {
 	int result = pthread_mutex_init(&__my_malloc_globalObject.mutex, NULL);
 	checkResultForThreadErrorAndExit("INTERNAL: An Error occurred while trying to initializing the "
 	                                 "internal mutex for the allocator");
+
+	result = atexit(my_allocator_destroy);
+	checkResultForThreadErrorAndExit(
+	    "INTERNAL: An Error occurred while trying to register the atexit function");
 }
 
 void my_allocator_destroy(void) {

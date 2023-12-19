@@ -127,6 +127,8 @@ void test_best_fit_allocator(void) {
 	void* ptr11 = my_malloc(1);
 	ASSERT(ptr11 == NULL);
 
+	my_free(ptr10);
+
 	my_allocator_destroy();
 
 	puts("All good!");

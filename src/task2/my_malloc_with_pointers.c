@@ -10,6 +10,8 @@ Module: PS OS 10
 #include <stdlib.h>
 #include <sys/mman.h>
 
+#include <valgrind.h>
+
 #include <utils.h>
 
 #include "my_malloc.h"
@@ -274,14 +276,20 @@ void* my_malloc(uint64_t size) {
 #endif
 
 	if(blockSize == size) {
+		// block size and size needed for allocation is the same, only need to set the status to
+		// allocated
 		bestFit->status = ALLOCED;
 	} else if(blockSize - size < sizeof(BlockInformation)) {
-
+		// block size and size needed for allocation is nearly the same, but can't allocate a new
+		// block at the end, since it hasn't enough space for another BlockInformation, so only need
+		// to set the status to allocated, but some size is wasted
 		bestFit->status = ALLOCED;
 
 	} else {
 		BlockInformation* newBlock =
 		    (BlockInformation*)((pseudoByte*)bestFit + sizeof(BlockInformation) + size);
+		MEMCHECK_DEFINE_INTERNAL_USE(newBlock, sizeof(BlockInformation));
+
 		newBlock->status = FREE;
 		newBlock->nextBlock = bestFit->nextBlock; // can be NULL
 		newBlock->previousBlock = bestFit;
@@ -299,6 +307,9 @@ void* my_malloc(uint64_t size) {
 	result = pthread_mutex_unlock(&__my_malloc_globalObject.mutex);
 	checkResultForThreadErrorAndExit(
 	    "INTERNAL: An Error occurred while trying to unlock the internal allocator mutex");
+
+	MEMCHECK_DEFINE_INTERNAL_USE(bestFit, sizeof(BlockInformation));
+	VALGRIND_ALLOC(returnValue, size, 0, false);
 
 	return returnValue;
 }
@@ -330,6 +341,8 @@ void my_free(void* ptr) {
 	}
 #endif
 	information->status = FREE;
+	// TODO: check if ptr has to be ptr or ptr - sizeof(BlockInformation)
+	VALGRIND_FREE(ptr, 0);
 
 	BlockInformation* nextBlock = (BlockInformation*)information->nextBlock;
 	BlockInformation* previousBlock = (BlockInformation*)information->previousBlock;
@@ -342,24 +355,34 @@ void my_free(void* ptr) {
 		return;
 	}
 
+	// merge with previous free block
 	if(previousBlock != NULL && previousBlock->status == FREE) {
+
+		// MERGE three free blocks into one: layout Previous | Current | Next => New Free one
 		if(nextBlock != NULL && nextBlock->status == FREE) {
 			previousBlock->nextBlock = nextBlock->nextBlock;
 
 			if(nextBlock->nextBlock != NULL) {
 				((BlockInformation*)nextBlock->nextBlock)->previousBlock = previousBlock;
 			}
+			// merge previous free block with current one
 		} else {
 
 			previousBlock->nextBlock = nextBlock; // can be NULL
 			nextBlock->previousBlock = previousBlock;
 		}
+
+		MEMCHECK_REMOVE_INTERNAL_USE(information, sizeof(BlockInformation));
+
+		// merge next free block with current one
 	} else if(nextBlock != NULL && nextBlock->status == FREE) {
 		information->nextBlock = nextBlock->nextBlock; // can be NULL
 
 		if(nextBlock->nextBlock != NULL) {
 			((BlockInformation*)nextBlock->nextBlock)->previousBlock = information;
 		}
+
+		MEMCHECK_REMOVE_INTERNAL_USE(nextBlock, sizeof(BlockInformation));
 	}
 
 #if _PRINT_DEBUG == 1
@@ -404,9 +427,14 @@ void my_allocator_init(uint64_t size) {
 }
 
 void my_allocator_destroy(void) {
+	if(__my_malloc_globalObject.data == NULL) {
+		return;
+	}
 
 	int result = munmap(__my_malloc_globalObject.data, __my_malloc_globalObject.dataSize);
 	checkResultForThreadErrorAndExit("INTERNAL: Failed to munmap for the allocator:");
+
+	__my_malloc_globalObject.data = NULL;
 
 	result = pthread_mutex_destroy(&__my_malloc_globalObject.mutex);
 	checkResultForThreadErrorAndExit(
@@ -415,3 +443,4 @@ void my_allocator_destroy(void) {
 }
 
 // NOTE: this is extremely slow for some reason!!
+// TODO: add realloc and was_alloced helper function

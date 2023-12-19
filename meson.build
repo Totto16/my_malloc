@@ -16,7 +16,14 @@ project(
 
 
 deps = []
+compile_flags = []
 
 deps += dependency('threads')
+
+valgrdind_dep = dependency('valgrind', required: false)
+if valgrdind_dep.found()
+    compile_flags += '-D_WITH_VALGRIND=1'
+    deps += valgrdind_dep
+endif
 
 subdir('src')

@@ -445,6 +445,10 @@ void my_allocator_init(uint64_t size) {
 	// initialize the first block, this sets everything to 0, but that isn't guaranteed in teh
 	// future and atm this is already done by mmap
 	BlockInformation* firstBlock = (BlockInformation*)__my_malloc_globalObject.data;
+
+	MEMCHECK_REMOVE_INTERNAL_USE(firstBlock, size);
+	MEMCHECK_DEFINE_INTERNAL_USE(firstBlock, sizeof(BlockInformation));
+
 	firstBlock->nextBlock = NULL;
 	firstBlock->previousBlock = NULL;
 	firstBlock->status.alloc_state = FREE;
@@ -459,6 +463,8 @@ void my_allocator_destroy(void) {
 	if(__my_malloc_globalObject.data == NULL) {
 		return;
 	}
+
+	MEMCHECK_REMOVE_INTERNAL_USE(__my_malloc_globalObject.data, __my_malloc_globalObject.dataSize);
 
 	int result = munmap(__my_malloc_globalObject.data, __my_malloc_globalObject.dataSize);
 	checkResultForThreadErrorAndExit("INTERNAL: Failed to munmap for the allocator:");

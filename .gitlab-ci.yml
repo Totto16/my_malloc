@@ -1,0 +1,78 @@
+image: debian:12
+
+stages: # List of stages for jobs, and their order of execution
+    - pre_checks
+    - compilation
+    - post_checks
+
+format_checker:
+    stage: pre_checks
+    image: debian:12
+    before_script:
+        - apt-get update
+        - apt-get install lsb-release wget software-properties-common gnupg -y
+        - wget https://apt.llvm.org/llvm.sh
+        - chmod +x llvm.sh
+        - ./llvm.sh 17
+        - rm llvm.sh
+    script:
+        - apt-get update
+        - apt-get install clang-format-17 -y
+        - find src/ \( -iname *.h -o -iname *.c  \) -exec  clang-format-17 --Werror -n --verbose {} +
+
+compile_job_gcc:
+    stage: compilation
+    allow_failure: false
+    image: debian:12
+    needs:
+        - format_checker
+    script:
+        - apt-get update
+        - apt-get install ninja-build gcc-12 g++-12 cmake python3 python3-pip pkg-config -y
+        - pip install meson
+        - export CC=gcc-12
+        - export CXX=g++-12
+        - meson setup build
+        - meson compile -C build
+
+compile_job_clang:
+    stage: compilation
+    allow_failure: false
+    image: debian:12
+    before_script:
+        - apt-get update
+        - apt-get install lsb-release wget software-properties-common gnupg -y
+        - wget https://apt.llvm.org/llvm.sh
+        - chmod +x llvm.sh
+        - ./llvm.sh 17
+        - rm llvm.sh
+    needs:
+        - format_checker
+    script:
+        - apt-get update
+        - apt-get install ninja-build clang-17 cmake python3 python3-pip pkg-config -y
+        - pip install meson
+        - export CC=clang-17
+        - export CXX=clang++-17
+        - meson setup build
+        - meson compile -C build
+
+static_checker:
+    stage: post_checks
+    image: debian:11
+    before_script:
+        - apt-get update
+        - apt-get install lsb-release wget software-properties-common gnupg -y
+        - wget https://apt.llvm.org/llvm.sh
+        - chmod +x llvm.sh
+        - ./llvm.sh 17
+        - rm llvm.sh
+    needs:
+        - compile_job_gcc
+        - compile_job_clang
+    script:
+        - apt-get update
+        - apt-get install ninja-build gcc-12 g++-12 cmake clang-tidy-17 python3 python3-pip pkg-config -y
+        - pip install meson
+        - meson setup build
+        - find src/ -iname *.c -exec clang-tidy-17 -p build {} +

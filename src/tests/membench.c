@@ -11,6 +11,19 @@
 
 #include "membench.h"
 
+#ifdef NDEBUG
+#define ASSERT(x) \
+	do { \
+		if(!x) { \
+			fprintf(stderr, "ASSERTION ERROR: %s: %s\n", __FILE__, __LINE__); \
+			exit(1); \
+		} \
+	} while(0)
+#else
+#include <assert.h>
+#define ASSERT(x) assert(x)
+#endif
+
 #define POOL_SIZE ((uint64_t)(1024U * 1024U * 128U))
 #define MAX_ALLOC_MULTIPLIER 4U
 

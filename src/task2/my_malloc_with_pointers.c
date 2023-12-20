@@ -120,7 +120,6 @@ static bool __my_malloc_block_fitsBetter(BlockInformation* toCompare,
 		if(blockSize == sizeof(BlockInformation) + size) {
 			return true;
 		}
-
 	}
 
 	if(blockSize < size) {
@@ -247,6 +246,12 @@ void* my_malloc(uint64_t size) {
 
 #if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
 	int result = pthread_mutex_lock(&__my_malloc_globalObject.mutex);
+
+	if(__my_malloc_globalObject.data == NULL) {
+		fprintf(stderr, "Calling malloc before initializing the allocator is prohibited!\n");
+		exit(1);
+	}
+
 	// mutex errors are better when being asserted, since no real errors can occur, only when the
 	// system is already malfunctioning
 	checkResultForThreadErrorAndExit(
@@ -387,6 +392,12 @@ void* my_realloc(void* ptr, uint64_t size) {
 
 #if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
 	int result = pthread_mutex_lock(&__my_malloc_globalObject.mutex);
+
+	if(__my_malloc_globalObject.data == NULL) {
+		fprintf(stderr, "Calling realloc before initializing the allocator is prohibited!\n");
+		exit(1);
+	}
+
 	// mutex errors are better when being asserted, since no real errors can occur, only when the
 	// system is already malfunctioning
 	checkResultForThreadErrorAndExit(

@@ -121,8 +121,7 @@ TEST(MyMalloc, reallocOperations) {
 TEST(MyMalloc, callBeforeInitializing) {
 
 	EXPECT_EXIT({ my_malloc(1024); }, ::testing::ExitedWithCode(1),
-	            "INTERNAL: An Error occurred while trying to lock the mutex "
-	            "in the internal allocator: Invalid argument");
+	            testing::Eq("Calling malloc before initializing the allocator is prohibited!\n"));
 }
 
 TEST(MyMalloc, doubleFree) {

@@ -68,10 +68,12 @@ static _Thread_local GlobalObject __my_malloc_globalObject = { .data = NULL };
 #endif
 
 /**
+ * @brief INTERNAL FUNCTION; DO NOT USE
+ *
  * @note Needs to be called with the mutex locked, in order to be thread safe!
  *
  */
-uint64_t size_of_double_pointer_block(BlockInformation* block) {
+static uint64_t size_of_double_pointer_block(BlockInformation* block) {
 	if(block == NULL) {
 		printSingleErrorAndExit("INTERNAL: This is an allocator ERROR, this shouldn't occur!\n");
 	} else if(block->nextBlock == NULL) {
@@ -84,6 +86,8 @@ uint64_t size_of_double_pointer_block(BlockInformation* block) {
 }
 
 /**
+ * @brief INTERNAL FUNCTION; DO NOT USE
+ *
  * @note Needs to be called with the mutex locked, in order to be thread safe!
  *
  */
@@ -135,22 +139,10 @@ static bool __my_malloc_block_fitsBetter(BlockInformation* toCompare,
 }
 
 /**
- * @note MT-safe - with thread_local storage, this only accesses that, otherwise a mutex is used, if
- * this is called without initializing the underlying allocator beforehand, it is undefined
- * behaviour, however this function crashes the program in that case
+ * @brief internal malloc, used by realloc and malloc, but doesn't lock mutexes, that is done by the
+ * parent functions, DO NOT us outside of the internals of this file!
  */
-void* my_malloc(uint64_t size) {
-	// TODO: if the size is to high for that, than use mmap to get another block, with double
-	// TODO: pointers the whole allocated region doesn't have to be continuous, check if nothing
-	// TODO: expects that to be the case, especially the sizeof block or similar functions!
-
-#if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
-	int result = pthread_mutex_lock(&__my_malloc_globalObject.mutex);
-	// mutex errors are better when being asserted, since no real errors can occur, only when the
-	// system is already malfunctioning
-	checkResultForThreadErrorAndExit(
-	    "INTERNAL: An Error occurred while trying to lock the mutex in the internal allocator");
-#endif
+static void* __internal__my_malloc(uint64_t size) {
 
 	// calling my_malloc without initializing the allocator doesn't work, if that is the case,
 	// likely the uninitialized mutex access before this will crash the program, but that is here
@@ -195,21 +187,15 @@ void* my_malloc(uint64_t size) {
 	   (blockSize != size && blockSize < size + sizeof(BlockInformation) &&
 	    bestFit->nextBlock == NULL) ||
 	   bestFit->status != FREE) {
-#if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
-		result = pthread_mutex_unlock(&__my_malloc_globalObject.mutex);
-		checkResultForThreadErrorAndExit("INTERNAL: An Error occurred while trying to "
-		                                 "unlock the internal allocator mutex");
-#endif
-
 		return NULL;
 	};
 
-	if(blockSize == size) {
+	if(blockSize - size <= (sizeof(BlockInformation))) {
 		// block size and size needed for allocation is the same, only need to set the status to
 		// allocated
 
-		bestFit->status = ALLOCED;
-	} else if(blockSize - size <= (sizeof(BlockInformation))) {
+		// OR
+
 		// block size and size needed for allocation is nearly the same, but can't allocate a new
 		// block at the end, since it hasn't enough space for another BlockInformation, so only need
 		// to set the status to allocated, but some size is wasted, it can create a gap of 1 or
@@ -243,6 +229,29 @@ void* my_malloc(uint64_t size) {
 	MEMCHECK_DEFINE_INTERNAL_USE(bestFit, sizeof(BlockInformation));
 	VALGRIND_ALLOC(returnValue, size, 0, false);
 
+	return returnValue;
+}
+
+/**
+ * @note MT-safe - with thread_local storage, this only accesses that, otherwise a mutex is
+ * used, if this is called without initializing the underlying allocator beforehand, it is
+ * undefined behaviour, however this function crashes the program in that case
+ */
+void* my_malloc(uint64_t size) {
+	// TODO: if the size is to high for that, than use mmap to get another block, with double
+	// TODO: pointers the whole allocated region doesn't have to be continuous, check if nothing
+	// TODO: expects that to be the case, especially the sizeof block or similar functions!
+
+#if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
+	int result = pthread_mutex_lock(&__my_malloc_globalObject.mutex);
+	// mutex errors are better when being asserted, since no real errors can occur, only when the
+	// system is already malfunctioning
+	checkResultForThreadErrorAndExit(
+	    "INTERNAL: An Error occurred while trying to lock the mutex in the internal allocator");
+#endif
+
+	void* returnValue = __internal__my_malloc(size);
+
 #if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
 	result = pthread_mutex_unlock(&__my_malloc_globalObject.mutex);
 	checkResultForThreadErrorAndExit(
@@ -253,31 +262,10 @@ void* my_malloc(uint64_t size) {
 }
 
 /**
- * @brief frees a pointer, a NULL pointer is ignored and a safe noop,
- * if the pointer is not allocated with my_malloc, this call is undefined behaviour. It likely will
- * crash or create a blockInformation structure, that will crash in later stages, since it tries to
- * interpret some random garbage memory as block-structure, so be aware of that!
- * DOUBLE Frees crash the program, so remember to always set freed pointer sto NULL :)
- *
- * @note MT-safe, using the mutex, or the thread local storage, the same principles as in my_malloc
- * apply, so calling this with an uninitialized allocator is undefined behaviour and crashes the
- * program
- *
+ * @brief internal free, used by realloc and free, but doesn't lock mutexes, that is done by the
+ * parent functions, DO NOT us outside of the internals of this file!
  */
-void my_free(void* ptr) {
-
-	// so that if you pass a wrong argument just nothing happens!
-	if(ptr == NULL) {
-		return;
-	}
-
-#if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
-	int result = pthread_mutex_lock(&__my_malloc_globalObject.mutex);
-	// mutex errors are better when being asserted, since no real errors can occur, only when the
-	// system is already malfunctioning
-	checkResultForThreadErrorAndExit(
-	    "INTERNAL: An Error occurred while trying to lock the mutex in the internal allocator");
-#endif
+static void __internal__my_free(void* ptr) {
 
 	// calling my_free without initializing the allocator doesn't work, if that is the case,
 	// likely the uninitialized mutex access before this will crash the program, but that is here
@@ -331,12 +319,272 @@ void my_free(void* ptr) {
 
 		MEMCHECK_REMOVE_INTERNAL_USE(nextBlock, sizeof(BlockInformation));
 	}
+}
+
+/**
+ * @brief frees a pointer, a NULL pointer is ignored and a safe noop,
+ * if the pointer is not allocated with my_malloc, this call is undefined behaviour. It likely will
+ * crash or create a blockInformation structure, that will crash in later stages, since it tries to
+ * interpret some random garbage memory as block-structure, so be aware of that!
+ * DOUBLE Frees crash the program, so remember to always set freed pointer sto NULL :)
+ *
+ * @note MT-safe, using the mutex, or the thread local storage, the same principles as in my_malloc
+ * apply, so calling this with an uninitialized allocator is undefined behaviour and crashes the
+ * program
+ *
+ */
+void my_free(void* ptr) {
+
+	// so that if you pass a wrong argument just nothing happens!
+	if(ptr == NULL) {
+		return;
+	}
+
+#if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
+	int result = pthread_mutex_lock(&__my_malloc_globalObject.mutex);
+	// mutex errors are better when being asserted, since no real errors can occur, only when the
+	// system is already malfunctioning
+	checkResultForThreadErrorAndExit(
+	    "INTERNAL: An Error occurred while trying to lock the mutex in the internal allocator");
+#endif
+
+	__internal__my_free(ptr);
 
 #if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
 	result = pthread_mutex_unlock(&__my_malloc_globalObject.mutex);
 	checkResultForThreadErrorAndExit(
 	    "INTERNAL: An Error occurred while trying to unlock the internal allocator mutex");
 #endif
+}
+
+// TODO: test this, this is still untested!
+
+/**
+ * @brief If ptr is NULL, this behaves as my_malloc
+ * If size == 0 it behaves as my_free and returns NULL
+ *
+ * Otherwise it reallocates the memory, it may have a different address than before, but the return
+ * value may also be the same as ptr. If the new size is greater than the previous size, the whole
+ * content of the previous ptr is preserves and copied to the new ptr, if needed, the rest of the
+ * data is undefined. If the new size is smaller, the data beyond that is potentially overwritten,
+ * at least it's not accessible anymore, the returned ptr can be the same, but doesn't have to be
+ * the same, since realloc may chose a better suited block for it, if that'S teh case, the data up
+ * to the new size is the same as the old one
+ */
+void* my_realloc(void* ptr, uint64_t size) {
+
+	// if ptr == NULL, it is the same as my_malloc(size);
+	if(ptr == NULL) {
+		return my_malloc(size);
+	}
+
+	// if size == 0, it is the same as my_free(size);
+	if(size == 0) {
+		my_free(ptr);
+		return NULL;
+	}
+
+#if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
+	int result = pthread_mutex_lock(&__my_malloc_globalObject.mutex);
+	// mutex errors are better when being asserted, since no real errors can occur, only when the
+	// system is already malfunctioning
+	checkResultForThreadErrorAndExit(
+	    "INTERNAL: An Error occurred while trying to lock the mutex in the internal allocator");
+#endif
+
+	// calling my_malloc without initializing the allocator doesn't work, if that is the case,
+	// likely the uninitialized mutex access before this will crash the program, but that is here
+	// for safety measures! AND ALSO in the case of uninitialized allocator in the thread local case
+	if(__my_malloc_globalObject.data == NULL) {
+		fprintf(stderr, "Calling realloc before initializing the allocator is prohibited!\n");
+		exit(1);
+	}
+
+	BlockInformation* information =
+	    (BlockInformation*)((pseudoByte*)ptr - sizeof(BlockInformation));
+
+	if(information->status == FREE) {
+		printErrorAndExit("INTERNAL: you tried to realloc a freed Block: %p\n", ptr);
+	}
+
+	// ATTENTION: this size isn't always the correct size, of the previous alloc! since some amount
+	// of dread space can be at the end, it can be between 0 and sizeof(BlockInformation) bytes,
+	// since there's no room for a new block in there. So every calculation here has to pay
+	// attention to that
+
+	// It is fine, to copy the undefined memory, since it's  at the end, where the new memory would
+	// be undefined nevertheless
+	const uint64_t blockSize = size_of_double_pointer_block(information);
+
+	// CASE 1: the new size is smaller or the same (it may be also the same, if the blockSize is
+	// slightly bigger, since there might be end padding!)
+	if(size <= blockSize) {
+		// TODO: realloc just truncates the block in this scenario, atm, but maybe we should search
+		// TODO: a better block, that is better suited for that cause, that is computational
+		// TODO: intensive, but it may create less holes in the end also pay attention to padding,
+		// TODO: so it has to be at least sizeof(BlockInformation) smaller, to allocate a new block!
+
+		// CASE 1.1: no new block can be placed after the new size, so just returning the old size
+		// and doing some valgrind house keeping
+		if(blockSize - size <= sizeof(BlockInformation)) {
+
+			// TODO: here valgrind thinks that the memory, that is not touched is undefined, but it
+			// isn't necessary, I have to tell valgrind, that the memory from ptr- size is
+			// unchanged, so that it doesn#t change the state, but the memory after ptr+size is now
+			// undefined, but i can't free it
+			VALGRIND_FREE(ptr, 0);
+			VALGRIND_ALLOC(ptr, size, 0, false);
+
+#if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
+			int result = pthread_mutex_unlock(&__my_malloc_globalObject.mutex);
+			checkResultForThreadErrorAndExit("INTERNAL: An Error occurred while trying to "
+			                                 "unlock the internal allocator mutex");
+#endif
+			// just return the old pointer
+			return ptr;
+
+		} else {
+
+			// CASE 1.2: make a new block, that is free, and is at the end of size
+
+			// TODO: check if this does the correct thing with the alloc down below
+			VALGRIND_FREE(ptr, 0);
+
+			BlockInformation* newBlock =
+			    (BlockInformation*)(((pseudoByte*)information + sizeof(BlockInformation)) + size);
+			MEMCHECK_DEFINE_INTERNAL_USE(newBlock, sizeof(BlockInformation));
+
+			newBlock->nextBlock = information->nextBlock; // may be NULL
+			newBlock->previousBlock = information;
+			newBlock->status = FREE;
+
+			information->nextBlock = newBlock;
+			if(newBlock->nextBlock != NULL) {
+				((BlockInformation*)newBlock->nextBlock)->previousBlock = newBlock;
+			}
+
+			VALGRIND_ALLOC(ptr, size, 0, false);
+
+#if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
+			int result = pthread_mutex_unlock(&__my_malloc_globalObject.mutex);
+			checkResultForThreadErrorAndExit("INTERNAL: An Error occurred while trying to "
+			                                 "unlock the internal allocator mutex");
+#endif
+			// just return the old pointer
+			return ptr;
+		}
+
+	} else {
+		// CASE 2: the size is bigger
+
+		// it is enough to look forward one block, since there is per guarantee no block that is
+		// also free, after a free block
+
+		BlockInformation* nextBlock = (BlockInformation*)information->nextBlock; // may be NULL
+
+		// Case 2.1: the current block with the next block can fit the new size!
+		if(nextBlock != NULL && nextBlock->status == FREE) {
+			const uint64_t nextBlockSize = size_of_double_pointer_block(nextBlock);
+
+			const uint64_t totalPotentialSize =
+			    nextBlockSize + sizeof(BlockInformation) + blockSize;
+
+			if(totalPotentialSize >= size) {
+
+				// figure out, if theres space for another block inside the new larger area!
+
+				// CASE 2.1.1: no new block can be placed inside the new larger area, just deleting
+				// the old in the middle (nextBlock)
+				if(totalPotentialSize - size <= (sizeof(BlockInformation))) {
+
+					information->nextBlock = nextBlock->nextBlock; // can be NULL
+					if(nextBlock->nextBlock != NULL) {
+						((BlockInformation*)nextBlock->nextBlock)->previousBlock = information;
+					}
+
+					MEMCHECK_REMOVE_INTERNAL_USE(nextBlock, sizeof(BlockInformation));
+					// TODO: check if this does the correct thing
+					VALGRIND_ALIGN_ALLOC_TO_GREATER_BLOCK(ptr, size);
+
+#if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
+					int result = pthread_mutex_unlock(&__my_malloc_globalObject.mutex);
+					checkResultForThreadErrorAndExit("INTERNAL: An Error occurred while trying to "
+					                                 "unlock the internal allocator mutex");
+#endif
+					// just return the old pointer, it has now space for the size
+					return ptr;
+
+				} else {
+
+					// CASE 2.1.2: delete the current one and create a new one at the end, that is
+					// free
+
+					BlockInformation* newBlock =
+					    (BlockInformation*)(((pseudoByte*)information + sizeof(BlockInformation)) +
+					                        size);
+					MEMCHECK_DEFINE_INTERNAL_USE(newBlock, sizeof(BlockInformation));
+
+					newBlock->previousBlock = information;
+					newBlock->nextBlock = nextBlock->nextBlock; // can be NULL
+					newBlock->status = FREE;
+
+					information->nextBlock = newBlock;
+
+					if(nextBlock->nextBlock != NULL) {
+						((BlockInformation*)nextBlock->nextBlock)->previousBlock = newBlock;
+					}
+
+					MEMCHECK_REMOVE_INTERNAL_USE(nextBlock, sizeof(BlockInformation));
+					// TODO: check if this does the correct thing
+					VALGRIND_ALIGN_ALLOC_TO_GREATER_BLOCK(ptr, size);
+
+#if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
+					int result = pthread_mutex_unlock(&__my_malloc_globalObject.mutex);
+					checkResultForThreadErrorAndExit("INTERNAL: An Error occurred while trying to "
+					                                 "unlock the internal allocator mutex");
+#endif
+					// just return the old pointer, it has now space for the size
+					return ptr;
+				}
+			}
+		}
+
+		// CASE 2.2 we need to issue a new malloc and copy the data over
+		void* newRegion = __internal__my_malloc(size);
+
+		if(newRegion == NULL) {
+#if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
+			int result = pthread_mutex_unlock(&__my_malloc_globalObject.mutex);
+			checkResultForThreadErrorAndExit("INTERNAL: An Error occurred while trying to "
+			                                 "unlock the internal allocator mutex");
+#endif
+
+			return NULL;
+		}
+
+		// copy the data into the new region, the blockSize is not 100%% accurate, but as said
+		// above, the rest is undefined memory, as the rest of the newRegion region
+		void* dest = memcpy(newRegion, ptr, blockSize);
+
+		if(dest != newRegion) {
+			fprintf(stderr,
+			        "Error during memcpy, dest pointer is not the same as the given dest pointer: "
+			        "%p != %p\n",
+			        newRegion, dest);
+			exit(1);
+		}
+
+		// free the previous section
+		__internal__my_free(ptr);
+
+#if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
+		int result = pthread_mutex_unlock(&__my_malloc_globalObject.mutex);
+		checkResultForThreadErrorAndExit("INTERNAL: An Error occurred while trying to "
+		                                 "unlock the internal allocator mutex");
+#endif
+		// return the new region
+		return newRegion;
+	}
 }
 
 /**
@@ -406,14 +654,6 @@ void my_allocator_init(uint64_t size) {
 	                    exit(EXIT_FAILURE););
 
 #endif
-}
-
-// TODO: add realloc function
-
-void* my_realloc(void* ptr, uint64_t size) {
-	(void)ptr;
-	(void)size;
-	return NULL;
 }
 
 /**

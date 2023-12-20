@@ -114,6 +114,9 @@ long parseLongSafely(const char* toParse, const char* description);
 #define VALGRIND_ALLOC(start_addr, size, padding, is_zeroed) \
 	VALGRIND_MALLOCLIKE_BLOCK(start_addr, size, padding, is_zeroed)
 
+#define VALGRIND_ALIGN_ALLOC_TO_GREATER_BLOCK(start_addr, size) \
+	VALGRIND_MAKE_MEM_DEFINED_IF_ADDRESSABLE(start_addr, size)
+
 #define VALGRIND_FREE(start, padding) VALGRIND_FREELIKE_BLOCK(start, padding)
 
 #define MEMCHECK_DEFINE_INTERNAL_USE(start_addr, size) VALGRIND_MAKE_MEM_DEFINED(start_addr, size)
@@ -124,6 +127,7 @@ long parseLongSafely(const char* toParse, const char* description);
 
 #define VALGRIND_ALLOC(a, b, c, d)
 #define VALGRIND_FREE(a, b)
+#define VALGRIND_ALIGN_ALLOC_TO_GREATER_BLOCK(a, b)
 #define MEMCHECK_DEFINE_INTERNAL_USE(a, b)
 #define MEMCHECK_REMOVE_INTERNAL_USE(a, b)
 

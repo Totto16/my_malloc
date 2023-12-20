@@ -357,8 +357,6 @@ void my_free(void* ptr) {
 #endif
 }
 
-// TODO: test this, this is still untested!
-
 /**
  * @brief If ptr is NULL, this behaves as my_malloc
  * If size == 0 it behaves as my_free and returns NULL
@@ -428,10 +426,6 @@ void* my_realloc(void* ptr, uint64_t size) {
 		// and doing some valgrind house keeping
 		if(blockSize - size <= sizeof(BlockInformation)) {
 
-			// TODO: here valgrind thinks that the memory, that is not touched is undefined, but it
-			// isn't necessary, I have to tell valgrind, that the memory from ptr- size is
-			// unchanged, so that it doesn#t change the state, but the memory after ptr+size is now
-			// undefined, but i can't free it
 			VALGRIND_FREE(ptr, 0);
 			VALGRIND_ALLOC(ptr, size, 0, false);
 
@@ -447,7 +441,6 @@ void* my_realloc(void* ptr, uint64_t size) {
 
 			// CASE 1.2: make a new block, that is free, and is at the end of size
 
-			// TODO: check if this does the correct thing with the alloc down below
 			VALGRIND_FREE(ptr, 0);
 
 			BlockInformation* newBlock =
@@ -503,7 +496,6 @@ void* my_realloc(void* ptr, uint64_t size) {
 					}
 
 					MEMCHECK_REMOVE_INTERNAL_USE(nextBlock, sizeof(BlockInformation));
-					// TODO: check if this does the correct thing
 					VALGRIND_ALIGN_ALLOC_TO_GREATER_BLOCK(ptr, size);
 
 #if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
@@ -535,7 +527,6 @@ void* my_realloc(void* ptr, uint64_t size) {
 					}
 
 					MEMCHECK_REMOVE_INTERNAL_USE(nextBlock, sizeof(BlockInformation));
-					// TODO: check if this does the correct thing
 					VALGRIND_ALIGN_ALLOC_TO_GREATER_BLOCK(ptr, size);
 
 #if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1

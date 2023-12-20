@@ -12,4 +12,8 @@ void my_free(void*);
 void test_free_list_allocator(void);
 void test_best_fit_allocator(void);
 
+#ifdef _WITH_REALLOC
+void* my_realloc(void* ptr, uint64_t size);
+void test_realloc(void);
+#endif
 #endif

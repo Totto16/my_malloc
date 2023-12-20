@@ -28,6 +28,7 @@ executable(
     dependencies: task2_deps,
     include_directories: inc_dirs,
     c_args: [
+        '-D_WITH_REALLOC',
         common_args,
     ],
 )
@@ -39,6 +40,7 @@ executable(
     include_directories: inc_dirs,
     c_args: [
         '-D_ALLOCATOR_NOT_MT_SAVE',
+        '-D_WITH_REALLOC',
         common_args,
     ],
 )
@@ -51,6 +53,7 @@ executable(
     include_directories: inc_dirs,
     c_args: [
         '-D_PER_THREAD_ALLOCATOR=1',
+        '-D_WITH_REALLOC',
         common_args,
     ],
 )

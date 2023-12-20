@@ -135,3 +135,54 @@ void test_best_fit_allocator(void) {
 
 	puts("All good!");
 }
+
+#ifdef _WITH_REALLOC
+void test_realloc(void) {
+	my_allocator_init(POOL_SIZE);
+
+	void* const ptr1 = my_malloc(1024);
+	ASSERT(ptr1 != NULL);
+	memset(ptr1, 0xEE, 1024);
+
+	void* ptr2 = my_realloc(ptr1, 3072);
+
+	ASSERT(ptr2 == ptr1);
+	for(size_t i = 0; i < 1024; ++i) {
+		ASSERT(((unsigned char*)ptr2)[i] == 0xEE);
+	}
+	memset(((unsigned char*)ptr2) + 1024, 0xFF, 2048);
+
+	void* ptr3 = my_malloc(353534);
+	ASSERT(ptr3 != NULL);
+	memset(ptr3, 0xDD, 353534);
+
+	const uint64_t overhead = (ptrdiff_t)ptr3 - (ptrdiff_t)ptr2 - 3072;
+	printf("Overhead (list header size) is %zu\n", overhead);
+
+	void* ptr4 = my_realloc(ptr1, 1024 * 1024);
+	ASSERT(ptr2 != ptr4);
+	for(size_t i = 0; i < 1024; ++i) {
+		ASSERT(((unsigned char*)ptr4)[i] == 0xEE);
+	}
+	for(size_t i = 1024; i < 3072; ++i) {
+		ASSERT(((unsigned char*)ptr4)[i] == 0xFF);
+	}
+
+	my_free(ptr3);
+	my_free(ptr4);
+
+	// Lastly, allocate all available memory
+	void* ptr5 = my_malloc(POOL_SIZE - overhead);
+	ASSERT(ptr5 != NULL);
+
+	// Check OOM result
+	void* ptr6 = my_malloc(1);
+	ASSERT(ptr6 == NULL);
+
+	my_free(ptr5);
+
+	my_allocator_destroy();
+
+	puts("All good!");
+}
+#endif

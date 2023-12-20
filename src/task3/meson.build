@@ -33,13 +33,7 @@ executable(
     files('../task2/my_malloc_with_pointers.c', 'executable.c'),
     dependencies: task3_deps,
     include_directories: inc_dirs,
-    c_args: [
-        '-D_MALLOC=1',
-        '-D_PER_THREAD_ALLOCATOR=1',
-        '-D_USE_POINTERS=2',
-        '-D_VALIDATE_BLOCKS=0',
-        '-D_PRINT_DEBUG=0',
-    ],
+    c_args: ['-D_MALLOC=1', '-D_PER_THREAD_ALLOCATOR=1'],
 )
 
 

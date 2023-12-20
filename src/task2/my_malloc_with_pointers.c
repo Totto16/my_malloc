@@ -78,10 +78,12 @@ typedef struct {
 typedef struct {
 	void* data;
 	uint64_t dataSize;
+#ifndef _ALLOCATOR_NOT_MT_SAVE
 	pthread_mutex_t mutex;
+#endif
 } GlobalObject;
 
-#if _PER_THREAD_ALLOCATOR == 0
+#if _PER_THREAD_ALLOCATOR == 0 || defined(_ALLOCATOR_NOT_MT_SAVE)
 static GlobalObject __my_malloc_globalObject = { .data = NULL };
 #else
 // if _PER_THREAD_ALLOCATOR is 1 it allocates one such structure per Thread, this is done with teh
@@ -222,12 +224,13 @@ void* my_malloc(uint64_t size) {
 		fprintf(stderr, "Calling malloc before initializing the allocator is prohibited!\n");
 		exit(1);
 	}
-
+#ifndef _ALLOCATOR_NOT_MT_SAVE
 	int result = pthread_mutex_lock(&__my_malloc_globalObject.mutex);
 	// mutex errors are better when being asserted, since no real errors can occur, only when the
 	// system is already malfunctioning
 	checkResultForThreadErrorAndExit(
 	    "INTERNAL: An Error occurred while trying to lock the mutex in the internal allocator");
+#endif
 
 	BlockInformation* bestFit = (BlockInformation*)__my_malloc_globalObject.data;
 	BlockInformation* nextFreeBlock = (BlockInformation*)bestFit->nextBlock;
@@ -235,22 +238,22 @@ void* my_malloc(uint64_t size) {
 	while(nextFreeBlock != NULL) {
 		// TODO: this is extremely slow, this WIP tries to make some cases faster!!
 
-		/* 	SIZE_OF_DOUBLE_POINTER_BLOCK(blockSize, bestFit);
-		    if(blockSize + sizeof(BlockInformation) <= size) {
-		        break;
-		    }
+		/*
+		        SIZE_OF_DOUBLE_POINTER_BLOCK(blockSize, bestFit);
+		        if(blockSize + sizeof(BlockInformation) <= size) {
+		            break;
+		        }
 
-		    SIZE_OF_DOUBLE_POINTER_BLOCK(nextSize, nextFreeBlock);
-		    if(nextSize + sizeof(BlockInformation) <= size) {
-		        bestFit = nextFreeBlock;
-		    } */
+		        SIZE_OF_DOUBLE_POINTER_BLOCK(nextSize, nextFreeBlock);
+		        if(nextSize + sizeof(BlockInformation) <= size) {
+		            bestFit = nextFreeBlock;
+		        } */
 
 		if(__my_malloc_block_fitsBetter(nextFreeBlock, bestFit, size)) {
 			bestFit = nextFreeBlock;
 			// shorthand evaluation, so if it fits perfectly don't look fort better
 			SIZE_OF_DOUBLE_POINTER_BLOCK(blockSize, bestFit);
-			if(blockSize == size ||
-			   (blockSize == size + sizeof(BlockInformation) && bestFit->nextBlock == NULL)) {
+			if(blockSize == size) {
 				break;
 			}
 		}
@@ -263,10 +266,11 @@ void* my_malloc(uint64_t size) {
 	   (blockSize != size && blockSize < size + sizeof(BlockInformation) &&
 	    bestFit->nextBlock == NULL) ||
 	   bestFit->status.alloc_state != FREE) {
-
+#ifndef _ALLOCATOR_NOT_MT_SAVE
 		result = pthread_mutex_unlock(&__my_malloc_globalObject.mutex);
 		checkResultForThreadErrorAndExit("INTERNAL: An Error occurred while trying to "
 		                                 "unlock the internal allocator mutex");
+#endif
 
 		return NULL;
 	};
@@ -282,10 +286,12 @@ void* my_malloc(uint64_t size) {
 
 		bestFit->status.alloc_state = ALLOCED;
 		bestFit->status.fill_state = FULLY_FILLED;
-	} else if(blockSize - size < sizeof(BlockInformation)) {
+	} else if(blockSize - size < (2u * sizeof(BlockInformation))) {
 		// block size and size needed for allocation is nearly the same, but can't allocate a new
 		// block at the end, since it hasn't enough space for another BlockInformation, so only need
-		// to set the status to allocated, but some size is wasted
+		// to set the status to allocated, but some size is wasted, it can create a gap of 0 or
+		// more, to not do that, it has to be at least 2* the size, so that the block, that would be
+		// created isn#t 0 - Blocksize long, but at least BlockSize!
 
 		bestFit->status.alloc_state = ALLOCED;
 		bestFit->status.fill_state = NOT_FULLY_FILLED;
@@ -311,12 +317,14 @@ void* my_malloc(uint64_t size) {
 
 	void* returnValue = (pseudoByte*)bestFit + sizeof(BlockInformation);
 
+	MEMCHECK_DEFINE_INTERNAL_USE(bestFit, sizeof(BlockInformation));
+	VALGRIND_ALLOC(returnValue, size, 0, false);
+
+#ifndef _ALLOCATOR_NOT_MT_SAVE
 	result = pthread_mutex_unlock(&__my_malloc_globalObject.mutex);
 	checkResultForThreadErrorAndExit(
 	    "INTERNAL: An Error occurred while trying to unlock the internal allocator mutex");
-
-	MEMCHECK_DEFINE_INTERNAL_USE(bestFit, sizeof(BlockInformation));
-	VALGRIND_ALLOC(returnValue, size, 0, false);
+#endif
 
 	return returnValue;
 }
@@ -327,12 +335,13 @@ void my_free(void* ptr) {
 	if(ptr == NULL) {
 		return;
 	}
-
+#ifndef _ALLOCATOR_NOT_MT_SAVE
 	int result = pthread_mutex_lock(&__my_malloc_globalObject.mutex);
 	// mutex errors are better when being asserted, since no real errors can occur, only when the
 	// system is already malfunctioning
 	checkResultForThreadErrorAndExit(
 	    "INTERNAL: An Error occurred while trying to lock the mutex in the internal allocator");
+#endif
 
 	BlockInformation* information =
 	    (BlockInformation*)((pseudoByte*)ptr - sizeof(BlockInformation));
@@ -355,6 +364,11 @@ void my_free(void* ptr) {
 
 	if((pseudoByte*)previousBlock >
 	   (pseudoByte*)__my_malloc_globalObject.data + __my_malloc_globalObject.dataSize) {
+#ifndef _ALLOCATOR_NOT_MT_SAVE
+		int result = pthread_mutex_unlock(&__my_malloc_globalObject.mutex);
+		checkResultForThreadErrorAndExit(
+		    "INTERNAL: An Error occurred while trying to unlock the internal allocator mutex");
+#endif
 		return;
 	}
 
@@ -394,9 +408,11 @@ void my_free(void* ptr) {
 	__my_malloc_debug_printSegment("free: ", (BlockInformation*)__my_malloc_globalObject.data);
 #endif
 
+#ifndef _ALLOCATOR_NOT_MT_SAVE
 	result = pthread_mutex_unlock(&__my_malloc_globalObject.mutex);
 	checkResultForThreadErrorAndExit(
 	    "INTERNAL: An Error occurred while trying to unlock the internal allocator mutex");
+#endif
 }
 void my_allocator_init(uint64_t size) {
 	__my_malloc_globalObject.dataSize = size;
@@ -434,11 +450,12 @@ void my_allocator_init(uint64_t size) {
 	//((BlockInformation*)__my_malloc_globalObject.data)->nextBlock = NULL;
 	// ((BlockInformation*)__my_malloc_globalObject.data)->previousBlock = NULL;
 
+#ifndef _ALLOCATOR_NOT_MT_SAVE
 	// initialize the mutex, use default as attr
 	int result = pthread_mutex_init(&__my_malloc_globalObject.mutex, NULL);
 	checkResultForThreadErrorAndExit("INTERNAL: An Error occurred while trying to initializing the "
 	                                 "internal mutex for the allocator");
-
+#endif
 	// initialize the first block, this sets everything to 0, but that isn't guaranteed in teh
 	// future and atm this is already done by mmap
 	BlockInformation* firstBlock = (BlockInformation*)__my_malloc_globalObject.data;
@@ -451,9 +468,10 @@ void my_allocator_init(uint64_t size) {
 	firstBlock->status.alloc_state = FREE;
 	firstBlock->status.fill_state = FULLY_FILLED;
 
-	result = atexit(my_allocator_destroy);
-	checkResultForThreadErrorAndExit(
-	    "INTERNAL: An Error occurred while trying to register the atexit function");
+	int result2 = atexit(my_allocator_destroy);
+	checkForThreadError(result2,
+	                    "INTERNAL: An Error occurred while trying to register the atexit function",
+	                    exit(EXIT_FAILURE););
 }
 
 // TODO: add realloc and was_alloced helper function
@@ -480,8 +498,10 @@ void my_allocator_destroy(void) {
 
 	__my_malloc_globalObject.data = NULL;
 
+#ifndef _ALLOCATOR_NOT_MT_SAVE
 	result = pthread_mutex_destroy(&__my_malloc_globalObject.mutex);
 	checkResultForThreadErrorAndExit(
 	    "INTERNAL: An Error occurred while trying to destroy the internal mutex "
 	    "in cleaning up for the allocator");
+#endif
 }

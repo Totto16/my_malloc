@@ -626,7 +626,8 @@ void my_allocator_init(uint64_t size) {
 	if(__my_malloc_globalObject.data == MAP_FAILED) {
 		__my_malloc_globalObject.data = NULL;
 		__my_malloc_globalObject.dataSize = 0;
-		printErrorAndExit("INTERNAL: Failed to mmap for the allocator: %s\n", strerror(errno));
+		printErrorAndExit("ERROR: Failed to allocate memory in the allocator: %s\n",
+		                  strerror(errno));
 	}
 	// FREE is set with the 0 initialized region automatically (only here!)
 

@@ -153,7 +153,7 @@ TEST(MyMalloc, reallocFreedBlock) {
 TEST(MyMalloc, initializeError) {
 
 	EXPECT_EXIT({ my_allocator_init(POOL_SIZE * POOL_SIZE); }, ::testing::ExitedWithCode(1),
-	            "INTERNAL: Failed to mmap for the allocator: Cannot allocate memory\n");
+	            "ERROR: Failed to allocate memory in the allocator: Cannot allocate memory");
 }
 
 TEST(MyMalloc, doubleDestroy) {

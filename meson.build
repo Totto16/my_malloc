@@ -1,6 +1,7 @@
 project(
     'my own malloc',
     'c',
+    'cpp',
     license: 'MIT',
     meson_version: '>=1.2.0',
     default_options: {
@@ -27,3 +28,4 @@ if valgrdind_dep.found()
 endif
 
 subdir('src')
+

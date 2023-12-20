@@ -33,6 +33,20 @@ executable(
     ],
 )
 
+malloc_normal_lib = library(
+    'malloc_normal',
+    files('my_malloc_with_pointers.c'),
+    dependencies: utils_dep,
+    c_args: [
+        '-D_WITH_REALLOC',
+    ],
+)
+
+malloc_normal_dep = declare_dependency(
+    include_directories: include_directories('.'),
+    link_with: malloc_normal_lib,
+)
+
 executable(
     'tests_with_double_pointers_single_threaded',
     files('executable.c', 'my_malloc_with_pointers.c'),

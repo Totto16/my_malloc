@@ -1,13 +1,17 @@
+test_deps = deps
+
+test_deps += dependency('gtest')
 
 
-membench_lib = library('membench', files('membench.c'))
+test_src = files('entry.cpp', 'malloc.cpp')
 
-membench_dep = declare_dependency(
-    include_directories: include_directories('.'),
-    link_with: membench_lib,
+
+
+malloc_tests = executable(
+    'malloc_tests',
+    test_src,
+    dependencies: [test_deps, malloc_normal_dep],
 )
 
-allocator_tests_dep = declare_dependency(
-    include_directories: include_directories('.'),
-    sources: files('allocator_tests.c'),
-)
+
+test('malloc', malloc_tests, protocol: 'gtest')

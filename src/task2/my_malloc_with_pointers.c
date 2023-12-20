@@ -11,8 +11,6 @@ Module: PS OS 10
 #include <stdlib.h>
 #include <sys/mman.h>
 
-#include <valgrind.h>
-
 #include <utils.h>
 
 #include "my_malloc.h"

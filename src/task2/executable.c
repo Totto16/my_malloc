@@ -9,8 +9,8 @@ Module: PS OS 10
 
 #include "my_malloc.h"
 
-#include "../tests/allocator_tests.h"
-#include "../tests/membench.h"
+#include <allocator_tests.h>
+#include <membench.h>
 
 // prints the usage, if argc is not the right amount!
 void printUsage(const char* programName) {

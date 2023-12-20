@@ -20,6 +20,7 @@ TEST(MY_MALLOC, normal_operations) {
 	const uint64_t overhead = (ptrdiff_t)ptr2 - (ptrdiff_t)ptr1 - 1024;
 
 	my_free(ptr1);
+	my_free(nullptr);
 
 	// Reuse first block
 	void* ptr3 = my_malloc(1024);
@@ -113,4 +114,11 @@ TEST(MY_MALLOC, realloc_operations) {
 	my_free(ptr5);
 
 	my_allocator_destroy();
+}
+
+TEST(MY_MALLOC, call_before_initializing) {
+
+	EXPECT_EXIT({ my_malloc(1024); }, ::testing::ExitedWithCode(1),
+	            "INTERNAL: An Error occurred while trying to lock the mutex "
+	            "in the internal allocator: Invalid argument");
 }

@@ -7,7 +7,7 @@
 
 #define POOL_SIZE ((uint64_t)(1024U * 1024U * 256U))
 
-TEST(MY_MALLOC, normal_operations) {
+TEST(MyMalloc, normalOperations) {
 	my_allocator_init(POOL_SIZE);
 
 	void* const ptr1 = my_malloc(1024);
@@ -70,10 +70,11 @@ TEST(MY_MALLOC, normal_operations) {
 	my_allocator_destroy();
 }
 
-TEST(MY_MALLOC, realloc_operations) {
+TEST(MyMalloc, reallocOperations) {
 	my_allocator_init(POOL_SIZE);
 
-	void* const ptr1 = my_malloc(1024);
+	// the same as my_malloc(1024)
+	void* const ptr1 = my_realloc(nullptr, 1024);
 	EXPECT_NE(ptr1, nullptr);
 	memset(ptr1, 0xEE, 1024);
 
@@ -101,7 +102,8 @@ TEST(MY_MALLOC, realloc_operations) {
 	}
 
 	my_free(ptr3);
-	my_free(ptr4);
+	// the same as my_free(ptr4)
+	my_realloc(ptr4, 0);
 
 	// Lastly, allocate all available memory
 	void* ptr5 = my_malloc(POOL_SIZE - overhead);
@@ -116,9 +118,57 @@ TEST(MY_MALLOC, realloc_operations) {
 	my_allocator_destroy();
 }
 
-TEST(MY_MALLOC, call_before_initializing) {
+TEST(MyMalloc, callBeforeInitializing) {
 
 	EXPECT_EXIT({ my_malloc(1024); }, ::testing::ExitedWithCode(1),
 	            "INTERNAL: An Error occurred while trying to lock the mutex "
 	            "in the internal allocator: Invalid argument");
+}
+
+TEST(MyMalloc, doubleFree) {
+
+	my_allocator_init(POOL_SIZE);
+
+	void* const ptr1 = my_malloc(1024);
+	EXPECT_NE(ptr1, nullptr);
+
+	my_free(ptr1);
+
+	EXPECT_EXIT({ my_free(ptr1); }, ::testing::ExitedWithCode(1),
+	            "ERROR: You tried to free a already freed Block: 0x[0-9a-fA-F]{2,16}");
+}
+
+TEST(MyMalloc, reallocFreedBlock) {
+
+	my_allocator_init(POOL_SIZE);
+
+	void* const ptr1 = my_malloc(1024);
+	EXPECT_NE(ptr1, nullptr);
+
+	my_free(ptr1);
+
+	EXPECT_EXIT({ my_realloc(ptr1, 10); }, ::testing::ExitedWithCode(1),
+	            "ERROR: You tried to realloc a freed Block: 0x[0-9a-fA-F]{2,16}");
+}
+
+TEST(MyMalloc, reallocEdgeCases) {
+
+	my_allocator_init(POOL_SIZE);
+
+	// the same as my_malloc
+	void* ptr1 = my_realloc(nullptr, 1010);
+	EXPECT_NE(ptr1, nullptr);
+	memset(ptr1, 0xEE, 1000);
+
+	my_free(ptr1);
+
+	void* const ptr2 = my_realloc(nullptr, 1000);
+	EXPECT_EQ(ptr2, ptr1);
+	ptr1 = nullptr;
+
+	void* const ptr3 = my_realloc(ptr2, 1005);
+
+	EXPECT_EQ(ptr2, ptr3);
+
+	my_allocator_destroy();
 }

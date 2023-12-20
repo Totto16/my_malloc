@@ -3,7 +3,7 @@ test_deps = deps
 test_deps += dependency('gtest')
 
 
-test_src = files('entry.cpp', 'malloc.cpp')
+test_src = files('entry.cpp', 'malloc.cpp', 'malloc_seperate.cpp')
 
 
 

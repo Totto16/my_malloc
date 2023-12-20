@@ -282,7 +282,7 @@ static void __internal__my_free(void* ptr) {
 	    (BlockInformation*)((pseudoByte*)ptr - sizeof(BlockInformation));
 
 	if(information->status == FREE) {
-		printErrorAndExit("INTERNAL: you tried to free a already freed Block: %p\n", ptr);
+		printErrorAndExit("ERROR: You tried to free a already freed Block: %p\n", ptr);
 	}
 
 	information->status = FREE;
@@ -405,7 +405,7 @@ void* my_realloc(void* ptr, uint64_t size) {
 	    (BlockInformation*)((pseudoByte*)ptr - sizeof(BlockInformation));
 
 	if(information->status == FREE) {
-		printErrorAndExit("INTERNAL: you tried to realloc a freed Block: %p\n", ptr);
+		printErrorAndExit("ERROR: You tried to realloc a freed Block: %p\n", ptr);
 	}
 
 	// ATTENTION: this size isn't always the correct size, of the previous alloc! since some amount

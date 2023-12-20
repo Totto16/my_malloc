@@ -49,7 +49,12 @@ int main(int argc, char const* argv[]) {
 
 	if(modeMap & 2) { // 0b10
 		printf("Now running the memory benchmark:\n");
-		run_membench_global(my_allocator_init, my_allocator_destroy, my_malloc, my_free);
+#if defined(_PER_THREAD_ALLOCATOR) && _PER_THREAD_ALLOCATOR == 1
+		run_membench_thread_local
+#else
+		run_membench_global
+#endif
+		    (my_allocator_init, my_allocator_destroy, my_malloc, my_free);
 	}
 
 	return EXIT_SUCCESS;

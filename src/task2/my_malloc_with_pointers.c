@@ -474,11 +474,7 @@ void my_allocator_init(uint64_t size) {
 	                    exit(EXIT_FAILURE););
 }
 
-// TODO: add realloc and was_alloced helper function
-bool was_malloced(void* ptr) {
-	(void)ptr;
-	return false;
-}
+// TODO: add realloc function
 
 void* my_realloc(void* ptr, uint64_t size) {
 	(void)ptr;

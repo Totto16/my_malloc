@@ -150,6 +150,27 @@ TEST(MyMalloc, reallocFreedBlock) {
 	            "ERROR: You tried to realloc a freed Block: 0x[0-9a-fA-F]{2,16}");
 }
 
+TEST(MyMalloc, initializeError) {
+
+	EXPECT_EXIT(
+	    { my_allocator_init(POOL_SIZE * POOL_SIZE); }, ::testing::ExitedWithCode(1),
+	    testing::Eq("INTERNAL: Failed to mmap for the allocator: Cannot allocate memory\n"));
+}
+
+TEST(MyMalloc, doubleDestroy) {
+	my_allocator_init(POOL_SIZE);
+
+	my_allocator_init(POOL_SIZE);
+
+	void* const ptr1 = my_malloc(1024);
+	EXPECT_NE(ptr1, nullptr);
+
+	my_free(ptr1);
+
+	my_allocator_destroy();
+	my_allocator_destroy();
+}
+
 TEST(MyMalloc, reallocEdgeCases) {
 
 	my_allocator_init(POOL_SIZE);

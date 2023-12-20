@@ -1,2 +1,4 @@
 /build/
 /.vscode/
+run.sh
+coverage.xml

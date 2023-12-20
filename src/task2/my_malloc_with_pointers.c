@@ -3,6 +3,10 @@ Author: Tobias Niederbrunner - csba1761
 Module: PS OS 10
 */
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <errno.h>
 #include <pthread.h>
 #include <stdbool.h>
@@ -116,6 +120,7 @@ static bool __my_malloc_block_fitsBetter(BlockInformation* toCompare,
 		if(blockSize == sizeof(BlockInformation) + size) {
 			return true;
 		}
+
 	}
 
 	if(blockSize < size) {
@@ -672,3 +677,7 @@ void my_allocator_destroy(void) {
 	    "in cleaning up for the allocator");
 #endif
 }
+
+#ifdef __cplusplus
+}
+#endif

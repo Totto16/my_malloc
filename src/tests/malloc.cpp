@@ -11,22 +11,18 @@ TEST(MY_MALLOC, normal_operations) {
 	my_allocator_init(POOL_SIZE);
 
 	void* const ptr1 = my_malloc(1024);
-	printf("ptr1: %p\n", ptr1);
 	EXPECT_NE(ptr1, nullptr);
 	memset(ptr1, 0xFF, 1024);
 
 	void* ptr2 = my_malloc(1024);
-	printf("ptr2: %p\n", ptr2);
 	EXPECT_GT(ptr2, ptr1);
 	memset(ptr2, 0xFF, 1024);
 	const uint64_t overhead = (ptrdiff_t)ptr2 - (ptrdiff_t)ptr1 - 1024;
-	printf("Overhead (list header size) is %zu\n", overhead);
 
 	my_free(ptr1);
 
 	// Reuse first block
 	void* ptr3 = my_malloc(1024);
-	printf("ptr3: %p\n", ptr3);
 	EXPECT_EQ(ptr3, ptr1);
 
 	// Create a 2048 byte hole
@@ -93,7 +89,6 @@ TEST(MY_MALLOC, realloc_operations) {
 	memset(ptr3, 0xDD, 353534);
 
 	const uint64_t overhead = (ptrdiff_t)ptr3 - (ptrdiff_t)ptr2 - 3072;
-	printf("Overhead (list header size) is %zu\n", overhead);
 
 	void* ptr4 = my_realloc(ptr1, 1024 * 1024);
 	EXPECT_NE(ptr2, ptr4);
@@ -118,6 +113,4 @@ TEST(MY_MALLOC, realloc_operations) {
 	my_free(ptr5);
 
 	my_allocator_destroy();
-
-	puts("All good!");
 }

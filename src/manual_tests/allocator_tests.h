@@ -9,7 +9,6 @@ void my_allocator_destroy(void);
 void* my_malloc(uint64_t);
 void my_free(void*);
 
-void test_free_list_allocator(void);
 void test_best_fit_allocator(void);
 
 #ifdef _WITH_REALLOC

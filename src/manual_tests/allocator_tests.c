@@ -21,53 +21,6 @@
 
 #define POOL_SIZE ((uint64_t)(1024U * 1024U * 256U))
 
-void test_free_list_allocator(void) {
-	my_allocator_init(POOL_SIZE);
-
-	const void* too_large = my_malloc(POOL_SIZE);
-	ASSERT(too_large == NULL);
-
-	void* const ptr1 = my_malloc(1);
-	ASSERT(ptr1 != NULL);
-	printf("ptr1: %p\n", ptr1);
-
-	const void* const base = (void*)((unsigned char*)ptr1 - sizeof(void*));
-
-	void* const ptr2 = my_malloc(1);
-	printf("ptr2: %p\n", ptr2);
-
-	const uint64_t block_size = (ptrdiff_t)ptr2 - (ptrdiff_t)ptr1 - sizeof(void*);
-	printf("block size is: %" PRIu64 " (assuming header size %" PRIu64 ")\n", block_size,
-	       sizeof(void*));
-
-	my_free(ptr1);
-	void* const ptr3 = my_malloc(block_size);
-	memset(ptr3, 0xFF, block_size);
-	printf("ptr3: %p\n", ptr3);
-	ASSERT(ptr1 == ptr3);
-
-	void* const ptr4 = my_malloc(block_size);
-	ASSERT(ptr4 > ptr2);
-
-	// Figure out how large entire pool is
-	void* end = NULL;
-	while(1) {
-		void* next = my_malloc(1);
-		if(next != NULL) {
-			end = (void*)((unsigned char*)next + block_size);
-		} else {
-			break;
-		}
-	}
-	const uint64_t pool_size = (ptrdiff_t)end - (ptrdiff_t)base;
-	// This is a lower bound, as the pool may not be evenly divisible by block + header size.
-	ASSERT(pool_size <= POOL_SIZE);
-
-	my_allocator_destroy();
-
-	puts("All good!");
-}
-
 void test_best_fit_allocator(void) {
 	my_allocator_init(POOL_SIZE);
 

@@ -1,6 +1,6 @@
 /*
-Author: Tobias Niederbrunner - csba1761
-Module: PS OS 10
+Author: Totto16
+
 */
 
 #include <errno.h>

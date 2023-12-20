@@ -3,9 +3,7 @@ inc_dirs = include_directories('.')
 subdir('shared')
 subdir('manual_tests')
 
-subdir('task1')
-subdir('task2')
-subdir('task3')
+subdir('main')
 
 
 

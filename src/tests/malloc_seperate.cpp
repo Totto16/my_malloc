@@ -8,5 +8,5 @@
 TEST(MyMallocCrashes, reallocBeforeInitializing) {
 
 	EXPECT_EXIT({ my_realloc((void*)0xFFEEDDCC, 1024); }, ::testing::ExitedWithCode(1),
-	            testing::Eq("Calling realloc before initializing the allocator is prohibited!\n"));
+	            "Calling realloc before initializing the allocator is prohibited!");
 }

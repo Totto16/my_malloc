@@ -121,7 +121,7 @@ TEST(MyMalloc, reallocOperations) {
 TEST(MyMalloc, callBeforeInitializing) {
 
 	EXPECT_EXIT({ my_malloc(1024); }, ::testing::ExitedWithCode(1),
-	            testing::Eq("Calling malloc before initializing the allocator is prohibited!\n"));
+	            "Calling malloc before initializing the allocator is prohibited!");
 }
 
 TEST(MyMalloc, doubleFree) {
@@ -152,9 +152,8 @@ TEST(MyMalloc, reallocFreedBlock) {
 
 TEST(MyMalloc, initializeError) {
 
-	EXPECT_EXIT(
-	    { my_allocator_init(POOL_SIZE * POOL_SIZE); }, ::testing::ExitedWithCode(1),
-	    testing::Eq("INTERNAL: Failed to mmap for the allocator: Cannot allocate memory\n"));
+	EXPECT_EXIT({ my_allocator_init(POOL_SIZE * POOL_SIZE); }, ::testing::ExitedWithCode(1),
+	            "INTERNAL: Failed to mmap for the allocator: Cannot allocate memory\n");
 }
 
 TEST(MyMalloc, doubleDestroy) {

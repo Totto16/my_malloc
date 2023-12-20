@@ -362,6 +362,9 @@ void my_free(void* ptr) {
 	BlockInformation* nextBlock = (BlockInformation*)information->nextBlock;
 	BlockInformation* previousBlock = (BlockInformation*)information->previousBlock;
 
+	// TODO: THIS is just here, to catch erro9rs, this should removed, once an error is fied, the
+	// error
+	// TODO: arises, when  running membench, it than corrupts some blocks!
 	if((pseudoByte*)previousBlock >
 	   (pseudoByte*)__my_malloc_globalObject.data + __my_malloc_globalObject.dataSize) {
 #ifndef _ALLOCATOR_NOT_MT_SAVE
@@ -445,10 +448,6 @@ void my_allocator_init(uint64_t size) {
 		printErrorAndExit("INTERNAL: Failed to mmap for the allocator: %s\n", strerror(errno));
 	}
 	// FREE is set with the 0 initialized region automatically (only here!)
-
-	// done with setting everything to 0 implicitly
-	//((BlockInformation*)__my_malloc_globalObject.data)->nextBlock = NULL;
-	// ((BlockInformation*)__my_malloc_globalObject.data)->previousBlock = NULL;
 
 #ifndef _ALLOCATOR_NOT_MT_SAVE
 	// initialize the mutex, use default as attr

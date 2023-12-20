@@ -57,7 +57,7 @@ typedef struct {
 #if _PER_THREAD_ALLOCATOR == 0 || defined(_ALLOCATOR_NOT_MT_SAVE)
 static GlobalObject __my_malloc_globalObject = { .data = NULL };
 #else
-// if _PER_THREAD_ALLOCATOR is 1 it allocates one such structure per Thread, this is done with teh
+// if _PER_THREAD_ALLOCATOR is 1 it allocates one such structure per Thread, this is done with the
 // keyword "_Thread_local" (underscore Uppercase, and double underscore  + any case are reserved
 // words for the c standard, so this was introduced in c11, there exists a typedef thread_local for
 // that, but I rather use the Keyword directly )
@@ -67,6 +67,10 @@ static GlobalObject __my_malloc_globalObject = { .data = NULL };
 static _Thread_local GlobalObject __my_malloc_globalObject = { .data = NULL };
 #endif
 
+/**
+ * @note Needs to be called with the mutex locked, in order to be thread safe!
+ *
+ */
 uint64_t size_of_double_pointer_block(BlockInformation* block) {
 	if(block == NULL) {
 		printSingleErrorAndExit("INTERNAL: This is an allocator ERROR, this shouldn't occur!\n");
@@ -79,6 +83,10 @@ uint64_t size_of_double_pointer_block(BlockInformation* block) {
 	}
 }
 
+/**
+ * @note Needs to be called with the mutex locked, in order to be thread safe!
+ *
+ */
 static bool __my_malloc_block_fitsBetter(BlockInformation* toCompare,
                                          BlockInformation* currentBlock, uint64_t size) {
 
@@ -126,16 +134,15 @@ static bool __my_malloc_block_fitsBetter(BlockInformation* toCompare,
 	return (blockSize - size) < (currentSize - size);
 }
 
+/**
+ * @note MT-safe - with thread_local storage, this only accesses that, otherwise a mutex is used, if
+ * this is called without initializing the underlying allocator beforehand, it is undefined
+ * behaviour, however this function crashes the program in that case
+ */
 void* my_malloc(uint64_t size) {
 	// TODO: if the size is to high for that, than use mmap to get another block, with double
 	// TODO: pointers the whole allocated region doesn't have to be continuous, check if nothing
 	// TODO: expects that to be the case, especially the sizeof block or similar functions!
-
-	// calling my_malloc without initializing the allocator doesn't work
-	if(__my_malloc_globalObject.data == NULL) {
-		fprintf(stderr, "Calling malloc before initializing the allocator is prohibited!\n");
-		exit(1);
-	}
 
 #if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
 	int result = pthread_mutex_lock(&__my_malloc_globalObject.mutex);
@@ -144,6 +151,14 @@ void* my_malloc(uint64_t size) {
 	checkResultForThreadErrorAndExit(
 	    "INTERNAL: An Error occurred while trying to lock the mutex in the internal allocator");
 #endif
+
+	// calling my_malloc without initializing the allocator doesn't work, if that is the case,
+	// likely the uninitialized mutex access before this will crash the program, but that is here
+	// for safety measures! AND ALSO in the case of uninitialized allocator in the thread local case
+	if(__my_malloc_globalObject.data == NULL) {
+		fprintf(stderr, "Calling malloc before initializing the allocator is prohibited!\n");
+		exit(1);
+	}
 
 	BlockInformation* bestFit = (BlockInformation*)__my_malloc_globalObject.data;
 	BlockInformation* nextFreeBlock = (BlockInformation*)bestFit->nextBlock;
@@ -237,6 +252,18 @@ void* my_malloc(uint64_t size) {
 	return returnValue;
 }
 
+/**
+ * @brief frees a pointer, a NULL pointer is ignored and a safe noop,
+ * if the pointer is not allocated with my_malloc, this call is undefined behaviour. It likely will
+ * crash or create a blockInformation structure, that will crash in later stages, since it tries to
+ * interpret some random garbage memory as block-structure, so be aware of that!
+ * DOUBLE Frees crash the program, so remember to always set freed pointer sto NULL :)
+ *
+ * @note MT-safe, using the mutex, or the thread local storage, the same principles as in my_malloc
+ * apply, so calling this with an uninitialized allocator is undefined behaviour and crashes the
+ * program
+ *
+ */
 void my_free(void* ptr) {
 
 	// so that if you pass a wrong argument just nothing happens!
@@ -251,6 +278,14 @@ void my_free(void* ptr) {
 	checkResultForThreadErrorAndExit(
 	    "INTERNAL: An Error occurred while trying to lock the mutex in the internal allocator");
 #endif
+
+	// calling my_free without initializing the allocator doesn't work, if that is the case,
+	// likely the uninitialized mutex access before this will crash the program, but that is here
+	// for safety measures! AND ALSO in the case of uninitialized allocator in the thread local case
+	if(__my_malloc_globalObject.data == NULL) {
+		fprintf(stderr, "Calling free before initializing the allocator is prohibited!\n");
+		exit(1);
+	}
 
 	BlockInformation* information =
 	    (BlockInformation*)((pseudoByte*)ptr - sizeof(BlockInformation));
@@ -303,6 +338,14 @@ void my_free(void* ptr) {
 	    "INTERNAL: An Error occurred while trying to unlock the internal allocator mutex");
 #endif
 }
+
+/**
+ * @note NOT MT-safe. this function HAS TO BE called exactly once at the start of every program,
+ * that uses this. If using thread_local storage, you have to call it once per thread. After that
+ * every call to free and malloc is thread safe in both cases. If this fails, the program crashes.
+ * No error is returned
+ *
+ */
 void my_allocator_init(uint64_t size) {
 	__my_malloc_globalObject.dataSize = size;
 
@@ -341,7 +384,7 @@ void my_allocator_init(uint64_t size) {
 	checkResultForThreadErrorAndExit("INTERNAL: An Error occurred while trying to initializing the "
 	                                 "internal mutex for the allocator");
 #endif
-	// initialize the first block, this sets everything to 0, but that isn't guaranteed in teh
+	// initialize the first block, this sets everything to 0, but that isn't guaranteed in the
 	// future and atm this is already done by mmap
 	BlockInformation* firstBlock = (BlockInformation*)__my_malloc_globalObject.data;
 
@@ -352,11 +395,17 @@ void my_allocator_init(uint64_t size) {
 	firstBlock->previousBlock = NULL;
 	firstBlock->status = FREE;
 
-	// TODO: investigate atexit with multiple threads
-	/* 	int result2 = atexit(my_allocator_destroy);
-	    checkForThreadError(result2,
-	                        "INTERNAL: An Error occurred while trying to register the atexit
-	   function", exit(EXIT_FAILURE);); */
+// my_allocator_destroy is not always MT safe, in the thread local it is, but in the mutex case, it
+// isn't so not using it there, in the mutex case, the caller that called the initialization HAS to
+// call it manually, in the thread_local case, every thread cleans up the allocator themselves, a
+// manual call to destroy is a safe noop, but not needed
+#if _PER_THREAD_ALLOCATOR == 1
+	int result2 = atexit(my_allocator_destroy);
+	checkForThreadError(result2,
+	                    "INTERNAL: An Error occurred while trying to register the atexit function",
+	                    exit(EXIT_FAILURE););
+
+#endif
 }
 
 // TODO: add realloc function
@@ -367,6 +416,13 @@ void* my_realloc(void* ptr, uint64_t size) {
 	return NULL;
 }
 
+/**
+ * @note NOT MT-safe,in the thread local case it is however, this function has to be called at the
+ * end of every program, except when using thread locals, than you are free to call it, but don#t
+ * have to, the initializer creates an atexit handler, that destroys this, but calling it manually
+ * is a safe noop
+ *
+ */
 void my_allocator_destroy(void) {
 	if(__my_malloc_globalObject.data == NULL) {
 		return;
@@ -378,6 +434,7 @@ void my_allocator_destroy(void) {
 	checkResultForThreadErrorAndExit("INTERNAL: Failed to munmap for the allocator:");
 
 	__my_malloc_globalObject.data = NULL;
+	__my_malloc_globalObject.dataSize = 0;
 
 #if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
 	result = pthread_mutex_destroy(&__my_malloc_globalObject.mutex);

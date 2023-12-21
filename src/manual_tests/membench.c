@@ -15,7 +15,7 @@
 #define ASSERT(x) \
 	do { \
 		if(!(x)) { \
-			fprintf(stderr, "ASSERTION ERROR: %s: %d\n", __FILE__, __LINE__); \
+			fprintf(stderr, "ASSERTION ERROR: %s:%d\n", __FILE__, __LINE__); \
 			exit(1); \
 		} \
 	} while(0)

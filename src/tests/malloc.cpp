@@ -7,6 +7,9 @@
 
 #define POOL_SIZE ((uint64_t)(1024U * 1024U * 256U))
 
+// THIS IS hardcoded, since there's no better way of knowing this
+#define STATIC_MEMORYBLOCK_OVERHEAD (24UL)
+
 TEST(MyMalloc, normalOperations) {
 	my_allocator_init(POOL_SIZE);
 
@@ -58,7 +61,7 @@ TEST(MyMalloc, normalOperations) {
 	my_free(ptr3);
 
 	// Lastly, allocate all available memory
-	void* ptr10 = my_malloc(POOL_SIZE - overhead);
+	void* ptr10 = my_malloc(POOL_SIZE - overhead - STATIC_MEMORYBLOCK_OVERHEAD);
 	EXPECT_NE(ptr10, nullptr);
 
 	// Check OOM result
@@ -106,7 +109,7 @@ TEST(MyMalloc, reallocOperations) {
 	my_realloc(ptr4, 0);
 
 	// Lastly, allocate all available memory
-	void* ptr5 = my_malloc(POOL_SIZE - overhead);
+	void* ptr5 = my_malloc(POOL_SIZE - overhead - STATIC_MEMORYBLOCK_OVERHEAD);
 	EXPECT_NE(ptr5, nullptr);
 
 	// Check OOM result

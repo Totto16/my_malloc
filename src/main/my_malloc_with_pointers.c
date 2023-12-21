@@ -90,15 +90,14 @@ static MemoryBlockinformation* get_memory_block_by_number(block_number_t number)
 	MemoryBlockinformation* nextMemoryBlock =
 	    (MemoryBlockinformation*)__my_malloc_globalObject.block;
 
-	do {
+	while(nextMemoryBlock != NULL) {
 
 		if(nextMemoryBlock->number == number) {
 			return nextMemoryBlock;
 		}
 
 		nextMemoryBlock = nextMemoryBlock->next;
-
-	} while(nextMemoryBlock->next != NULL);
+	};
 
 	return NULL;
 }
@@ -779,7 +778,7 @@ void my_allocator_destroy(void) {
 	__my_malloc_globalObject.block = NULL;
 
 	// unmap the memory blocks in order
-	do {
+	while(nextMemoryBlock != NULL) {
 
 		MemoryBlockinformation* currentMemoryBlock = nextMemoryBlock;
 		const uint64_t currentMemoryBlockSize = currentMemoryBlock->size;
@@ -797,8 +796,7 @@ void my_allocator_destroy(void) {
 #endif
 
 		MEMCHECK_REMOVE_INTERNAL_USE(currentMemoryBlock, currentMemoryBlockSize);
-
-	} while(nextMemoryBlock->next != NULL);
+	};
 }
 
 #ifdef __cplusplus

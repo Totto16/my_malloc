@@ -6,11 +6,14 @@
 
 #include "allocator_tests.h"
 
+// THIS IS hardcoded, since there's no better way of knowing this
+#define STATIC_MEMORYBLOCK_OVERHEAD (24UL)
+
 #ifdef NDEBUG
 #define ASSERT(x) \
 	do { \
 		if(!(x)) { \
-			fprintf(stderr, "ASSERTION ERROR: %s: %d\n", __FILE__, __LINE__); \
+			fprintf(stderr, "ASSERTION ERROR: %s:%d\n", __FILE__, __LINE__); \
 			exit(1); \
 		} \
 	} while(0)
@@ -75,7 +78,7 @@ void test_best_fit_allocator(void) {
 	my_free(ptr3);
 
 	// Lastly, allocate all available memory
-	void* ptr10 = my_malloc(POOL_SIZE - overhead);
+	void* ptr10 = my_malloc(POOL_SIZE - overhead - STATIC_MEMORYBLOCK_OVERHEAD);
 	ASSERT(ptr10 != NULL);
 
 	// Check OOM result
@@ -125,7 +128,7 @@ void test_realloc(void) {
 	my_free(ptr4);
 
 	// Lastly, allocate all available memory
-	void* ptr5 = my_malloc(POOL_SIZE - overhead);
+	void* ptr5 = my_malloc(POOL_SIZE - overhead - STATIC_MEMORYBLOCK_OVERHEAD);
 	ASSERT(ptr5 != NULL);
 
 	// Check OOM result

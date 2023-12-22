@@ -493,11 +493,13 @@ INTERNAL_FUNCTION void __internal__my_free(void* ptr) {
 	BlockInformation* nextBlock = (BlockInformation*)information->nextBlock;
 	BlockInformation* previousBlock = (BlockInformation*)information->previousBlock;
 
-	// merge with previous free block
-	if(previousBlock != NULL && previousBlock->status == FREE) {
+	// merge with previous free block, if in 5the same memory block!
+	if(previousBlock != NULL && previousBlock->status == FREE &&
+	   previousBlock->blockNumber == information->blockNumber) {
 
 		// MERGE three free blocks into one: layout Previous | Current | Next => New Free one
-		if(nextBlock != NULL && nextBlock->status == FREE) {
+		if(nextBlock != NULL && nextBlock->status == FREE &&
+		   nextBlock->blockNumber == information->blockNumber) {
 			previousBlock->nextBlock = nextBlock->nextBlock; // Can be NULL
 
 			if(nextBlock->nextBlock != NULL) {
@@ -514,8 +516,9 @@ INTERNAL_FUNCTION void __internal__my_free(void* ptr) {
 
 		MEMCHECK_REMOVE_INTERNAL_USE(information, sizeof(BlockInformation));
 
-		// merge next free block with current one
-	} else if(nextBlock != NULL && nextBlock->status == FREE) {
+		// merge next free block with current one, if in the same memory block
+	} else if(nextBlock != NULL && nextBlock->status == FREE &&
+	          nextBlock->blockNumber == information->blockNumber) {
 		information->nextBlock = nextBlock->nextBlock; // can be NULL
 
 		if(nextBlock->nextBlock != NULL) {
@@ -525,7 +528,97 @@ INTERNAL_FUNCTION void __internal__my_free(void* ptr) {
 		MEMCHECK_REMOVE_INTERNAL_USE(nextBlock, sizeof(BlockInformation));
 	}
 
-	// TODO: check if a new EMPTY memory block arised, if so, munmap it!
+	// if a new EMPTY memory block was created munmap it!
+
+	// step 1: get the potential start block of a memory block, this can't be the next, since that
+	// would have deleted the memory block on his free, if it was totally free
+	BlockInformation* potentialFirstBlock = information;
+
+	// Case 1, previous was free and is in the same memory block
+	if(previousBlock != NULL && previousBlock->status == FREE &&
+	   previousBlock->blockNumber == information->blockNumber) {
+		potentialFirstBlock = previousBlock;
+	}
+
+	// case 2, current is the potential start (do nothing, as potentialFirstBlock is already
+	// correct)
+
+	// step 2: get the start of the current block
+	MemoryBlockinformation* currentMemoryBlock =
+	    get_memory_block_by_number(potentialFirstBlock->blockNumber);
+
+	if(currentMemoryBlock == NULL) {
+		printSingleErrorAndExit("INTERNAL: This is an allocator ERROR, this shouldn't occur: "
+		                        "currentMemoryBlock is NULL\n");
+	}
+
+	// step 3: test if the potentialFirstBlock is the first block, and it also spans the whole block
+	// (and is free, but that is already assured)
+	if((pseudoByte*)currentMemoryBlock + sizeof(MemoryBlockinformation) ==
+	       (pseudoByte*)potentialFirstBlock &&
+	   (potentialFirstBlock->nextBlock == NULL ||
+	    (pseudoByte*)potentialFirstBlock->nextBlock >
+	        ((pseudoByte*)currentMemoryBlock + currentMemoryBlock->size) ||
+	    (pseudoByte*)potentialFirstBlock->nextBlock < ((pseudoByte*)currentMemoryBlock))) {
+
+		// now remove this block with munmap, if it isn't the last one
+
+		// since we have no double pointers, the linked list has to be traversed, and the previous
+		// (if there is one) block has to be found and the next pointer has to be adjusted, it has
+		// to be checked, if the global object (the first list header) is the holder and than adjust
+		// that pointer too, also don't delete the last memory block, so at least one has to remain
+
+		if(__my_malloc_globalObject.block == currentMemoryBlock) {
+			if(currentMemoryBlock->next == NULL) {
+				// the last memory block can't be deleted!
+				return;
+			}
+
+			__my_malloc_globalObject.block = currentMemoryBlock->next;
+
+		} else {
+
+			// not special case, the block is somewhere in the middle of this single linked list
+			MemoryBlockinformation* previousMemoryBlock = NULL;
+
+			{
+				MemoryBlockinformation* nextMemoryBlock =
+				    (MemoryBlockinformation*)__my_malloc_globalObject.block;
+
+				while(nextMemoryBlock != NULL) {
+
+					if(nextMemoryBlock->next == currentMemoryBlock) {
+						previousMemoryBlock = nextMemoryBlock;
+						break;
+					}
+
+					nextMemoryBlock = nextMemoryBlock->next;
+				};
+			}
+
+			if(previousMemoryBlock != NULL) {
+				previousMemoryBlock->next = currentMemoryBlock->next; // may be NULL
+			}
+		}
+
+		// first remove the current FREE block, that is in this to be deleted memory block
+		if(potentialFirstBlock->nextBlock != NULL) {
+			((BlockInformation*)potentialFirstBlock->nextBlock)->previousBlock =
+			    potentialFirstBlock->previousBlock; // may be NULL
+		}
+
+		if(potentialFirstBlock->previousBlock != NULL) {
+			((BlockInformation*)potentialFirstBlock->previousBlock)->nextBlock =
+			    potentialFirstBlock->nextBlock; // may be NULL
+		}
+
+		const uint64_t currentMemoryBlockSize = currentMemoryBlock->size;
+
+		int result = munmap(currentMemoryBlock, currentMemoryBlockSize);
+		checkResultForThreadErrorAndExit("INTERNAL: Failed to munmap for the allocator:");
+
+		MEMCHECK_REMOVE_INTERNAL_USE(currentMemoryBlock, currentMemoryBlockSize);
+	}
 }
 
 /**
@@ -573,7 +666,7 @@ void my_free(void* ptr) {
  * content of the previous ptr is preserves and copied to the new ptr, if needed, the rest of the
  * data is undefined. If the new size is smaller, the data beyond that is potentially overwritten,
  * at least it's not accessible anymore, the returned ptr can be the same, but doesn't have to be
- * the same, since realloc may chose a better suited block for it, if that'S teh case, the data up
+ * the same, since realloc may chose a better suited block for it, if that'S the case, the data up
  * to the new size is the same as the old one
  */
 void* my_realloc(void* ptr, uint64_t size) {
@@ -901,15 +994,15 @@ void my_allocator_destroy(void) {
 		int result = munmap(currentMemoryBlock, currentMemoryBlockSize);
 		checkResultForThreadErrorAndExit("INTERNAL: Failed to munmap for the allocator:");
 
-#if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
-		result = pthread_mutex_destroy(&__my_malloc_globalObject.mutex);
-		checkResultForThreadErrorAndExit(
-		    "INTERNAL: An Error occurred while trying to destroy the internal mutex "
-		    "in cleaning up for the allocator");
-#endif
-
 		MEMCHECK_REMOVE_INTERNAL_USE(currentMemoryBlock, currentMemoryBlockSize);
 	};
+
+#if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
+	int result = pthread_mutex_destroy(&__my_malloc_globalObject.mutex);
+	checkResultForThreadErrorAndExit(
+	    "INTERNAL: An Error occurred while trying to destroy the internal mutex "
+	    "in cleaning up for the allocator");
+#endif
 }
 
 #ifdef __cplusplus

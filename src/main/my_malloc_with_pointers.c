@@ -363,13 +363,14 @@ INTERNAL_FUNCTION void* __internal__my_malloc(uint64_t size, BlockInformation* f
 			return NULL;
 		}
 
-		printf("mmaped returend  %p -> %p\n", newRegion, preferredAddress);
+		printf("mmaped returend  %p -> %p = %d\n", newRegion, preferredAddress,
+		       newRegion == preferredAddress);
 
 		// TODO: investigate how munmap works with patched memory
 		// regions and if it works at all
 
 		BlockInformation* newBlock =
-		    (BlockInformation*)((pseudoByte*)preferredAddress + sizeof(MemoryBlockinformation));
+		    (BlockInformation*)((pseudoByte*)newRegion + sizeof(MemoryBlockinformation));
 
 		block_number_t blockNumber = 0;
 
@@ -377,12 +378,12 @@ INTERNAL_FUNCTION void* __internal__my_malloc(uint64_t size, BlockInformation* f
 		// addition doesn't overflow uint64_t (unlikely, but check nevertheless)
 		if(newRegion == preferredAddress && ULLONG_MAX - lastMemoryBlock->size > preferredSize) {
 			lastMemoryBlock->size += preferredSize;
-			newBlock = preferredAddress;
+			newBlock = newRegion;
 			blockNumber = lastMemoryBlock->number;
 
 		} else {
 
-			MemoryBlockinformation* newMemoryBlock = (MemoryBlockinformation*)preferredAddress;
+			MemoryBlockinformation* newMemoryBlock = (MemoryBlockinformation*)newRegion;
 
 			MEMCHECK_DEFINE_INTERNAL_USE(newMemoryBlock, sizeof(MemoryBlockinformation));
 

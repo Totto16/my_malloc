@@ -39,6 +39,8 @@ void test_best_fit_allocator(void) {
 	const uint64_t overhead = (ptrdiff_t)ptr2 - (ptrdiff_t)ptr1 - 1024;
 	printf("Overhead (list header size) is %zu\n", overhead);
 
+	void* const startOfRegion = (unsigned char*)ptr1 - STATIC_MEMORYBLOCK_OVERHEAD - overhead;
+
 	my_free(ptr1);
 
 	// Reuse first block
@@ -77,13 +79,14 @@ void test_best_fit_allocator(void) {
 	my_free(ptr2);
 	my_free(ptr3);
 
-	// Lastly, allocate all available memory
+	// Lastly, allocate all available memory in the block
 	void* ptr10 = my_malloc(POOL_SIZE - overhead - STATIC_MEMORYBLOCK_OVERHEAD);
 	ASSERT(ptr10 != NULL);
 
-	// Check OOM result
+	// Check new mapped block, so that this memory is after the first allocation
 	void* ptr11 = my_malloc(1);
-	ASSERT(ptr11 == NULL);
+	ASSERT((unsigned char*)ptr11 > (unsigned char*)startOfRegion + POOL_SIZE ||
+	       (unsigned char*)ptr11 < (unsigned char*)startOfRegion);
 
 	my_free(ptr10);
 
@@ -115,6 +118,8 @@ void test_realloc(void) {
 	const uint64_t overhead = (ptrdiff_t)ptr3 - (ptrdiff_t)ptr2 - 3072;
 	printf("Overhead (list header size) is %zu\n", overhead);
 
+	void* const startOfRegion = (unsigned char*)ptr1 - STATIC_MEMORYBLOCK_OVERHEAD - overhead;
+
 	void* ptr4 = my_realloc(ptr1, 1024 * 1024);
 	ASSERT(ptr2 != ptr4);
 	for(size_t i = 0; i < 1024; ++i) {
@@ -131,9 +136,10 @@ void test_realloc(void) {
 	void* ptr5 = my_malloc(POOL_SIZE - overhead - STATIC_MEMORYBLOCK_OVERHEAD);
 	ASSERT(ptr5 != NULL);
 
-	// Check OOM result
+	// Check new mapped block, so that this memory is after the first allocation
 	void* ptr6 = my_malloc(1);
-	ASSERT(ptr6 == NULL);
+	ASSERT((unsigned char*)ptr6 > (unsigned char*)startOfRegion + POOL_SIZE ||
+	       (unsigned char*)ptr6 < (unsigned char*)startOfRegion);
 
 	my_free(ptr5);
 

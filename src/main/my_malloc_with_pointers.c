@@ -305,6 +305,15 @@ INTERNAL_FUNCTION void* __internal__my_malloc(uint64_t size, BlockInformation* f
 	BlockInformation* bestFit = fixedBlock;
 	if(bestFit == NULL) {
 
+		// TODO: allow even 0 memory blocks to be allocated, so that the allocator at the beginning
+		// doesn't allocate a chunk, but the first malloc call makes  anew one, free may also delete
+		// all memory blocks. to make that work check every access to __my_malloc_globalObject.block
+		// and simplify the free function, so that it can free the last one, and pay attention to
+		// the size calculation of the new block, it has to use some sort of constant (available in
+		// the header, so that you can rely on it!) This whole thing would largely benefit programs,
+		// that don't use any dynamic memory, but use this malloc, so no mmap call will be issued
+		// and no memory is required!
+
 		bestFit = (BlockInformation*)(((pseudoByte*)__my_malloc_globalObject.block) +
 		                              sizeof(MemoryBlockinformation));
 		BlockInformation* nextFreeBlock = (BlockInformation*)bestFit->nextBlock;

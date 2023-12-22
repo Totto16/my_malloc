@@ -480,26 +480,28 @@ INTERNAL_FUNCTION void __internal__my_free(void* ptr) {
 		exit(1);
 	}
 
-	BlockInformation* information =
+	BlockInformation* currentBlock =
 	    (BlockInformation*)((pseudoByte*)ptr - sizeof(BlockInformation));
 
-	if(information->status == FREE) {
+	if(currentBlock->status == FREE) {
 		printErrorAndExit("ERROR: You tried to free a already freed Block: %p\n", ptr);
 	}
 
-	information->status = FREE;
+	currentBlock->status = FREE;
 	VALGRIND_FREE(ptr, 0);
 
-	BlockInformation* nextBlock = (BlockInformation*)information->nextBlock;
-	BlockInformation* previousBlock = (BlockInformation*)information->previousBlock;
+	BlockInformation* nextBlock = (BlockInformation*)currentBlock->nextBlock;
+	BlockInformation* previousBlock = (BlockInformation*)currentBlock->previousBlock;
+
+	bool currentWasRemoved = false;
 
 	// merge with previous free block, if in 5the same memory block!
 	if(previousBlock != NULL && previousBlock->status == FREE &&
-	   previousBlock->blockNumber == information->blockNumber) {
+	   previousBlock->blockNumber == currentBlock->blockNumber) {
 
 		// MERGE three free blocks into one: layout Previous | Current | Next => New Free one
 		if(nextBlock != NULL && nextBlock->status == FREE &&
-		   nextBlock->blockNumber == information->blockNumber) {
+		   nextBlock->blockNumber == currentBlock->blockNumber) {
 			previousBlock->nextBlock = nextBlock->nextBlock; // Can be NULL
 
 			if(nextBlock->nextBlock != NULL) {
@@ -514,15 +516,16 @@ INTERNAL_FUNCTION void __internal__my_free(void* ptr) {
 			}
 		}
 
-		MEMCHECK_REMOVE_INTERNAL_USE(information, sizeof(BlockInformation));
+		MEMCHECK_REMOVE_INTERNAL_USE(currentBlock, sizeof(BlockInformation));
+		currentWasRemoved = true;
 
 		// merge next free block with current one, if in the same memory block
 	} else if(nextBlock != NULL && nextBlock->status == FREE &&
-	          nextBlock->blockNumber == information->blockNumber) {
-		information->nextBlock = nextBlock->nextBlock; // can be NULL
+	          nextBlock->blockNumber == currentBlock->blockNumber) {
+		currentBlock->nextBlock = nextBlock->nextBlock; // can be NULL
 
 		if(nextBlock->nextBlock != NULL) {
-			((BlockInformation*)nextBlock->nextBlock)->previousBlock = information;
+			((BlockInformation*)nextBlock->nextBlock)->previousBlock = currentBlock;
 		}
 
 		MEMCHECK_REMOVE_INTERNAL_USE(nextBlock, sizeof(BlockInformation));
@@ -532,11 +535,11 @@ INTERNAL_FUNCTION void __internal__my_free(void* ptr) {
 
 	// step 1: get the potential start block of a memory block, this can't be the next, since that
 	// would have deleted the memory block on his free, if it was totally free
-	BlockInformation* potentialFirstBlock = information;
+	BlockInformation* potentialFirstBlock = currentBlock;
 
 	// Case 1, previous was free and is in the same memory block
 	if(previousBlock != NULL && previousBlock->status == FREE &&
-	   previousBlock->blockNumber == information->blockNumber) {
+	   (currentWasRemoved || previousBlock->blockNumber == currentBlock->blockNumber)) {
 		potentialFirstBlock = previousBlock;
 	}
 
@@ -704,10 +707,10 @@ void* my_realloc(void* ptr, uint64_t size) {
 		exit(1);
 	}
 
-	BlockInformation* information =
+	BlockInformation* currentBlock =
 	    (BlockInformation*)((pseudoByte*)ptr - sizeof(BlockInformation));
 
-	if(information->status == FREE) {
+	if(currentBlock->status == FREE) {
 		printErrorAndExit("ERROR: You tried to realloc a freed Block: %p\n", ptr);
 	}
 
@@ -718,7 +721,7 @@ void* my_realloc(void* ptr, uint64_t size) {
 
 	// It is fine, to copy the undefined memory, since it's  at the end, where the new memory would
 	// be undefined nevertheless
-	const uint64_t blockSize = size_of_double_pointer_block(information);
+	const uint64_t blockSize = size_of_double_pointer_block(currentBlock);
 
 	// CASE 1: the new size is smaller or the same (it may be also the same, if the blockSize is
 	// slightly bigger, since there might be end padding!)
@@ -750,15 +753,15 @@ void* my_realloc(void* ptr, uint64_t size) {
 			VALGRIND_FREE(ptr, 0);
 
 			BlockInformation* newBlock =
-			    (BlockInformation*)(((pseudoByte*)information + sizeof(BlockInformation)) + size);
+			    (BlockInformation*)(((pseudoByte*)currentBlock + sizeof(BlockInformation)) + size);
 			MEMCHECK_DEFINE_INTERNAL_USE(newBlock, sizeof(BlockInformation));
 
-			newBlock->nextBlock = information->nextBlock; // may be NULL
-			newBlock->previousBlock = information;
+			newBlock->nextBlock = currentBlock->nextBlock; // may be NULL
+			newBlock->previousBlock = currentBlock;
 			newBlock->status = FREE;
-			newBlock->blockNumber = information->blockNumber;
+			newBlock->blockNumber = currentBlock->blockNumber;
 
-			information->nextBlock = newBlock;
+			currentBlock->nextBlock = newBlock;
 			if(newBlock->nextBlock != NULL) {
 				((BlockInformation*)newBlock->nextBlock)->previousBlock = newBlock;
 			}
@@ -780,7 +783,7 @@ void* my_realloc(void* ptr, uint64_t size) {
 		// it is enough to look forward one block, since there is per guarantee no block that is
 		// also free, after a free block
 
-		BlockInformation* nextBlock = (BlockInformation*)information->nextBlock; // may be NULL
+		BlockInformation* nextBlock = (BlockInformation*)currentBlock->nextBlock; // may be NULL
 
 		// Case 2.1: the current block with the next block can fit the new size!
 		if(nextBlock != NULL && nextBlock->status == FREE) {
@@ -797,9 +800,9 @@ void* my_realloc(void* ptr, uint64_t size) {
 				// the old in the middle (nextBlock)
 				if(totalPotentialSize - size <= (sizeof(BlockInformation))) {
 
-					information->nextBlock = nextBlock->nextBlock; // can be NULL
+					currentBlock->nextBlock = nextBlock->nextBlock; // can be NULL
 					if(nextBlock->nextBlock != NULL) {
-						((BlockInformation*)nextBlock->nextBlock)->previousBlock = information;
+						((BlockInformation*)nextBlock->nextBlock)->previousBlock = currentBlock;
 					}
 
 					MEMCHECK_REMOVE_INTERNAL_USE(nextBlock, sizeof(BlockInformation));
@@ -819,16 +822,16 @@ void* my_realloc(void* ptr, uint64_t size) {
 					// free
 
 					BlockInformation* newBlock =
-					    (BlockInformation*)(((pseudoByte*)information + sizeof(BlockInformation)) +
+					    (BlockInformation*)(((pseudoByte*)currentBlock + sizeof(BlockInformation)) +
 					                        size);
 					MEMCHECK_DEFINE_INTERNAL_USE(newBlock, sizeof(BlockInformation));
 
-					newBlock->previousBlock = information;
+					newBlock->previousBlock = currentBlock;
 					newBlock->nextBlock = nextBlock->nextBlock; // can be NULL
 					newBlock->status = FREE;
-					newBlock->blockNumber = information->blockNumber;
+					newBlock->blockNumber = currentBlock->blockNumber;
 
-					information->nextBlock = newBlock;
+					currentBlock->nextBlock = newBlock;
 
 					if(nextBlock->nextBlock != NULL) {
 						((BlockInformation*)nextBlock->nextBlock)->previousBlock = newBlock;

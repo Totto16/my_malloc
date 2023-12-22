@@ -726,10 +726,6 @@ void* my_realloc(void* ptr, uint64_t size) {
 	// CASE 1: the new size is smaller or the same (it may be also the same, if the blockSize is
 	// slightly bigger, since there might be end padding!)
 	if(size <= blockSize) {
-		// TODO: realloc just truncates the block in this scenario, atm, but maybe we should search
-		// TODO: a better block, that is better suited for that cause, that is computational
-		// TODO: intensive, but it may create less holes in the end also pay attention to padding,
-		// TODO: so it has to be at least sizeof(BlockInformation) smaller, to allocate a new block!
 
 		// CASE 1.1: no new block can be placed after the new size, so just returning the old size
 		// and doing some valgrind house keeping
@@ -750,31 +746,108 @@ void* my_realloc(void* ptr, uint64_t size) {
 
 			// CASE 1.2: make a new block, that is free, and is at the end of size
 
-			VALGRIND_FREE(ptr, 0);
+			// If applicable we search a better block, that is better suited for that cause, that
+			// is computational intensive, but it may create less holes in the end also pay
+			// attention to padding, so it has to be at least sizeof(BlockInformation) smaller, to
+			// allocate a new block!
 
-			BlockInformation* newBlock =
-			    (BlockInformation*)(((pseudoByte*)currentBlock + sizeof(BlockInformation)) + size);
-			MEMCHECK_DEFINE_INTERNAL_USE(newBlock, sizeof(BlockInformation));
+			// CASE 1.2.1: the new areas is significantly smaller than the last one, so using free +
+			// malloc to get a better spot for the significantly smaller size, use 50% as threshold,
+			// so that if it's 50% smaller, use malloc to get a new block
+			// small NOTE: since we don't free this block before issuing a malloc, this block might
+			// be suited better, but we have to use another xD, it might even return NULL, so it'S
+			// out of memory xD
+			if(size * 2 < blockSize) {
 
-			newBlock->nextBlock = currentBlock->nextBlock; // may be NULL
-			newBlock->previousBlock = currentBlock;
-			newBlock->status = FREE;
-			newBlock->blockNumber = currentBlock->blockNumber;
+				void* newRegion = __internal__my_malloc(size, NULL);
 
-			currentBlock->nextBlock = newBlock;
-			if(newBlock->nextBlock != NULL) {
-				((BlockInformation*)newBlock->nextBlock)->previousBlock = newBlock;
-			}
+				// out of memory, so just use the current nevertheless xD
+				// ATTENTION: code duplication, since no good pattern emerges, to reuse code via
+				// call or control flow :(
+				if(newRegion == NULL) {
 
-			VALGRIND_ALLOC(ptr, size, 0, false);
+					VALGRIND_FREE(ptr, 0);
+
+					BlockInformation* newBlock =
+					    (BlockInformation*)(((pseudoByte*)currentBlock + sizeof(BlockInformation)) +
+					                        size);
+					MEMCHECK_DEFINE_INTERNAL_USE(newBlock, sizeof(BlockInformation));
+
+					newBlock->nextBlock = currentBlock->nextBlock; // may be NULL
+					newBlock->previousBlock = currentBlock;
+					newBlock->status = FREE;
+					newBlock->blockNumber = currentBlock->blockNumber;
+
+					currentBlock->nextBlock = newBlock;
+					if(newBlock->nextBlock != NULL) {
+						((BlockInformation*)newBlock->nextBlock)->previousBlock = newBlock;
+					}
+
+					VALGRIND_ALLOC(ptr, size, 0, false);
 
 #if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
-			int result = pthread_mutex_unlock(&__my_malloc_globalObject.mutex);
-			checkResultForThreadErrorAndExit("INTERNAL: An Error occurred while trying to "
-			                                 "unlock the internal allocator mutex");
+					int result = pthread_mutex_unlock(&__my_malloc_globalObject.mutex);
+					checkResultForThreadErrorAndExit("INTERNAL: An Error occurred while trying to "
+					                                 "unlock the internal allocator mutex");
 #endif
-			// just return the old pointer
-			return ptr;
+					// just return the old pointer
+					return ptr;
+				}
+
+				// copy the subset of data into the new region
+				void* dest = memcpy(newRegion, ptr, size);
+
+				if(dest != newRegion) {
+					fprintf(stderr,
+					        "Error during memcpy, dest pointer is not the same as the given dest "
+					        "pointer: "
+					        "%p != %p\n",
+					        newRegion, dest);
+					exit(1);
+				}
+
+				// free the previous section
+				__internal__my_free(ptr);
+
+#if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
+				int result = pthread_mutex_unlock(&__my_malloc_globalObject.mutex);
+				checkResultForThreadErrorAndExit("INTERNAL: An Error occurred while trying to "
+				                                 "unlock the internal allocator mutex");
+#endif
+				// return the new region
+				return newRegion;
+
+			} else {
+
+				// CASE 1.2.2: just divide the block and use the current One
+
+				VALGRIND_FREE(ptr, 0);
+
+				BlockInformation* newBlock =
+				    (BlockInformation*)(((pseudoByte*)currentBlock + sizeof(BlockInformation)) +
+				                        size);
+				MEMCHECK_DEFINE_INTERNAL_USE(newBlock, sizeof(BlockInformation));
+
+				newBlock->nextBlock = currentBlock->nextBlock; // may be NULL
+				newBlock->previousBlock = currentBlock;
+				newBlock->status = FREE;
+				newBlock->blockNumber = currentBlock->blockNumber;
+
+				currentBlock->nextBlock = newBlock;
+				if(newBlock->nextBlock != NULL) {
+					((BlockInformation*)newBlock->nextBlock)->previousBlock = newBlock;
+				}
+
+				VALGRIND_ALLOC(ptr, size, 0, false);
+
+#if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
+				int result = pthread_mutex_unlock(&__my_malloc_globalObject.mutex);
+				checkResultForThreadErrorAndExit("INTERNAL: An Error occurred while trying to "
+				                                 "unlock the internal allocator mutex");
+#endif
+				// just return the old pointer
+				return ptr;
+			}
 		}
 
 	} else {

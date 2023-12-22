@@ -89,6 +89,7 @@ void test_best_fit_allocator(void) {
 	       (unsigned char*)ptr11 < (unsigned char*)startOfRegion);
 
 	my_free(ptr10);
+	my_free(ptr11);
 
 	my_allocator_destroy();
 
@@ -142,6 +143,7 @@ void test_realloc(void) {
 	       (unsigned char*)ptr6 < (unsigned char*)startOfRegion);
 
 	my_free(ptr5);
+	my_free(ptr6);
 
 	my_allocator_destroy();
 

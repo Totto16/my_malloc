@@ -499,6 +499,11 @@ INTERNAL_FUNCTION void __internal__my_free(void* ptr) {
 	BlockInformation* currentBlock =
 	    (BlockInformation*)((pseudoByte*)ptr - sizeof(BlockInformation));
 
+	if(__my_malloc_globalObject.block == NULL) {
+		// no block is not free, since we have no block anymore xD
+		printErrorAndExit("ERROR: You tried to free a already freed Block: %p\n", ptr);
+	}
+
 	if(currentBlock->status == FREE) {
 		printErrorAndExit("ERROR: You tried to free a already freed Block: %p\n", ptr);
 	}
@@ -706,7 +711,7 @@ void* my_realloc(void* ptr, uint64_t size) {
 #if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
 	int result = pthread_mutex_lock(&__my_malloc_globalObject.mutex);
 
-	if(__my_malloc_globalObject.block == NULL) {
+	if(__my_malloc_globalObject.defaultMemoryBlockSize == 0) {
 		fprintf(stderr, "Calling realloc before initializing the allocator is prohibited!\n");
 		exit(1);
 	}
@@ -720,13 +725,18 @@ void* my_realloc(void* ptr, uint64_t size) {
 	// calling my_malloc without initializing the allocator doesn't work, if that is the case,
 	// likely the uninitialized mutex access before this will crash the program, but that is here
 	// for safety measures! AND ALSO in the case of uninitialized allocator in the thread local case
-	if(__my_malloc_globalObject.block == NULL) {
+	if(__my_malloc_globalObject.defaultMemoryBlockSize == 0) {
 		fprintf(stderr, "Calling realloc before initializing the allocator is prohibited!\n");
 		exit(1);
 	}
 
 	BlockInformation* currentBlock =
 	    (BlockInformation*)((pseudoByte*)ptr - sizeof(BlockInformation));
+
+	if(__my_malloc_globalObject.block == NULL) {
+		// no block is not free, since we have no block anymore xD
+		printErrorAndExit("ERROR: You tried to realloc a freed Block: %p\n", ptr);
+	}
 
 	if(currentBlock->status == FREE) {
 		printErrorAndExit("ERROR: You tried to realloc a freed Block: %p\n", ptr);

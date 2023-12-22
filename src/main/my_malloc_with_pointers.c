@@ -310,19 +310,6 @@ INTERNAL_FUNCTION void* __internal__my_malloc(uint64_t size, BlockInformation* f
 		BlockInformation* nextFreeBlock = (BlockInformation*)bestFit->nextBlock;
 
 		while(nextFreeBlock != NULL) {
-			// TODO: this is extremely slow, this WIP tries to make some cases faster!!
-
-			/*
-			        size_of_double_pointer_block(blockSize, bestFit);
-			        if(blockSize + sizeof(BlockInformation) <= size) {
-			            break;
-			        }
-
-			        size_of_double_pointer_block(nextSize, nextFreeBlock);
-			        if(nextSize + sizeof(BlockInformation) <= size) {
-			            bestFit = nextFreeBlock;
-			        } */
-
 			if(__my_malloc_block_fitsBetter(nextFreeBlock, bestFit, size)) {
 				bestFit = nextFreeBlock;
 				// shorthand evaluation, so if it fits perfectly don't look for a better one

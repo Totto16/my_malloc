@@ -154,8 +154,13 @@ static void run_membench(init_allocator_fn my_init, destroy_allocator_fn my_dest
 		       " byte per thread. Avg time per "
 		       "thread:\n",
 		       num_threads, num_allocations, alloc_size, alloc_size * MAX_ALLOC_MULTIPLIER);
-		printf("\tSystem: %.2lf ms\n", run_config(num_threads, &system_ctx));
-		printf("\tCustom: %.2lf ms\n", run_config(num_threads, &custom_ctx));
+		const double system = run_config(num_threads, &system_ctx);
+		printf("\tSystem: %.2lf ms\n", system);
+		const double custom = run_config(num_threads, &custom_ctx);
+		printf("\tCustom: %.2lf ms\n", custom);
+		printf("\tCustom is %.2lf %s than System\n",
+		       system > custom ? system / custom : custom / system,
+		       system > custom ? "faster" : "slower");
 	}
 
 	if(!init_per_thread) {

@@ -363,38 +363,20 @@ INTERNAL_FUNCTION void* __internal__my_malloc(uint64_t size, BlockInformation* f
 			return NULL;
 		}
 
-		printf("mmaped returend  %p -> %p = %d\n", newRegion, preferredAddress,
-		       newRegion == preferredAddress);
+		MemoryBlockinformation* newMemoryBlock = (MemoryBlockinformation*)newRegion;
 
-		// TODO: investigate how munmap works with patched memory
-		// regions and if it works at all
+		MEMCHECK_DEFINE_INTERNAL_USE(newMemoryBlock, sizeof(MemoryBlockinformation));
+
+		newMemoryBlock->next = NULL;
+		newMemoryBlock->size = preferredSize;
+
+		block_number_t blockNumber = get_next_free_memory_number();
+		newMemoryBlock->number = blockNumber;
+
+		lastMemoryBlock->next = newMemoryBlock;
 
 		BlockInformation* newBlock =
 		    (BlockInformation*)((pseudoByte*)newRegion + sizeof(MemoryBlockinformation));
-
-		block_number_t blockNumber = 0;
-
-		// we have a continuous memory, so  no new memory block has to be created, check if size
-		// addition doesn't overflow uint64_t (unlikely, but check nevertheless)
-		if(newRegion == preferredAddress && ULLONG_MAX - lastMemoryBlock->size > preferredSize) {
-			lastMemoryBlock->size += preferredSize;
-			newBlock = newRegion;
-			blockNumber = lastMemoryBlock->number;
-
-		} else {
-
-			MemoryBlockinformation* newMemoryBlock = (MemoryBlockinformation*)newRegion;
-
-			MEMCHECK_DEFINE_INTERNAL_USE(newMemoryBlock, sizeof(MemoryBlockinformation));
-
-			newMemoryBlock->next = NULL;
-			newMemoryBlock->size = preferredSize;
-			newMemoryBlock->number = get_next_free_memory_number();
-
-			lastMemoryBlock->next = newMemoryBlock;
-
-			blockNumber = newMemoryBlock->number;
-		}
 
 		// no adding the BlockInformation to the memoryBlock
 		MEMCHECK_DEFINE_INTERNAL_USE(newBlock, sizeof(BlockInformation));

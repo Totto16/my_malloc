@@ -303,8 +303,11 @@ void my_free(void* ptr) {
 	    "INTERNAL: An Error occurred while trying to unlock the internal allocator mutex");
 }
 
-void my_allocator_init(uint64_t size) {
+void my_allocator_init(uint64_t size, bool force_alloc) {
 	__my_malloc_globalObject.dataSize = size;
+
+	// DOES NOTHING
+	(void)force_alloc;
 
 	// MAP_ANONYMOUS means, that
 	//  "The mapping is not backed by any file; its contents are initialized to zero.  The fd

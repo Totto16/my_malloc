@@ -1,10 +1,11 @@
 #ifndef ALLOCATOR_TESTS_H
 #define ALLOCATOR_TESTS_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
 
-void my_allocator_init(uint64_t);
+void my_allocator_init(uint64_t, bool);
 void my_allocator_destroy(void);
 void* my_malloc(uint64_t);
 void my_free(void*);

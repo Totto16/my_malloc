@@ -1,10 +1,11 @@
 #ifndef MEMBENCH_H
 #define MEMBENCH_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-typedef void (*init_allocator_fn)(uint64_t);
+typedef void (*init_allocator_fn)(uint64_t, bool);
 typedef void (*destroy_allocator_fn)(void);
 
 typedef void* (*malloc_fn)(uint64_t);

@@ -52,7 +52,7 @@ static void* thread_fn(void* arg) {
 	void** ptrs = calloc(ctx->num_allocations, sizeof(void*));
 
 	if(ctx->my_init != NULL) {
-		ctx->my_init(POOL_SIZE);
+		ctx->my_init(POOL_SIZE, true);
 	}
 
 	const int64_t before = get_timestamp_us();
@@ -125,7 +125,7 @@ static double run_config(uint32_t num_threads, thread_context* ctx) {
 static void run_membench(init_allocator_fn my_init, destroy_allocator_fn my_destroy,
                          malloc_fn my_malloc, free_fn my_free, bool init_per_thread) {
 	if(!init_per_thread) {
-		my_init(POOL_SIZE);
+		my_init(POOL_SIZE, true);
 	}
 
 	const uint64_t configs[][3] = {

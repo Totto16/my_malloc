@@ -72,10 +72,11 @@ typedef struct {
 	pthread_mutex_t mutex;
 #endif
 	MemoryBlockinformation* block;
+	uint64_t defaultMemoryBlockSize;
 } GlobalObject;
 
 #if _PER_THREAD_ALLOCATOR == 0 || defined(_ALLOCATOR_NOT_MT_SAVE)
-static GlobalObject __my_malloc_globalObject = { .block = NULL };
+static GlobalObject __my_malloc_globalObject = { .defaultMemoryBlockSize = 0 };
 #else
 // if _PER_THREAD_ALLOCATOR is 1 it allocates one such structure per Thread, this is done with the
 // keyword "_Thread_local" (underscore Uppercase, and double underscore  + any case are reserved
@@ -84,7 +85,7 @@ static GlobalObject __my_malloc_globalObject = { .block = NULL };
 // ATTENTION: each Thread also has to call my_allocator_init, otherwise this is NULL and I DON'T
 // check if it's NULL ANYWHERE, meaning it will crash rather instantly trying to read from or store
 // to address 0!! from the data entry in the struct, that is 0 initialized!)
-static _Thread_local GlobalObject __my_malloc_globalObject = { .block = NULL };
+static _Thread_local GlobalObject __my_malloc_globalObject = { .defaultMemoryBlockSize = 0 };
 #endif
 
 /**
@@ -96,7 +97,7 @@ static _Thread_local GlobalObject __my_malloc_globalObject = { .block = NULL };
 INTERNAL_FUNCTION MemoryBlockinformation* get_memory_block_by_number(block_number_t number) {
 
 	MemoryBlockinformation* nextMemoryBlock =
-	    (MemoryBlockinformation*)__my_malloc_globalObject.block;
+	    (MemoryBlockinformation*)__my_malloc_globalObject.block; // may be NULL
 
 	while(nextMemoryBlock != NULL) {
 
@@ -119,9 +120,9 @@ INTERNAL_FUNCTION MemoryBlockinformation* get_memory_block_by_number(block_numbe
 INTERNAL_FUNCTION MemoryBlockinformation* get_last_memory_block() {
 
 	MemoryBlockinformation* nextMemoryBlock =
-	    (MemoryBlockinformation*)__my_malloc_globalObject.block;
+	    (MemoryBlockinformation*)__my_malloc_globalObject.block; // may be NULL
 
-	while(true) {
+	while(nextMemoryBlock != NULL) {
 
 		if(nextMemoryBlock->next == NULL) {
 			return nextMemoryBlock;
@@ -129,6 +130,8 @@ INTERNAL_FUNCTION MemoryBlockinformation* get_last_memory_block() {
 
 		nextMemoryBlock = nextMemoryBlock->next;
 	};
+
+	return NULL;
 }
 
 /**
@@ -297,22 +300,13 @@ INTERNAL_FUNCTION void* __internal__my_malloc(uint64_t size, BlockInformation* f
 	// calling my_malloc without initializing the allocator doesn't work, if that is the case,
 	// likely the uninitialized mutex access before this will crash the program, but that is here
 	// for safety measures! AND ALSO in the case of uninitialized allocator in the thread local case
-	if(__my_malloc_globalObject.block == NULL) {
+	if(__my_malloc_globalObject.defaultMemoryBlockSize == 0) {
 		fprintf(stderr, "Calling malloc before initializing the allocator is prohibited!\n");
 		exit(1);
 	}
 
 	BlockInformation* bestFit = fixedBlock;
-	if(bestFit == NULL) {
-
-		// TODO: allow even 0 memory blocks to be allocated, so that the allocator at the beginning
-		// doesn't allocate a chunk, but the first malloc call makes  anew one, free may also delete
-		// all memory blocks. to make that work check every access to __my_malloc_globalObject.block
-		// and simplify the free function, so that it can free the last one, and pay attention to
-		// the size calculation of the new block, it has to use some sort of constant (available in
-		// the header, so that you can rely on it!) This whole thing would largely benefit programs,
-		// that don't use any dynamic memory, but use this malloc, so no mmap call will be issued
-		// and no memory is required!
+	if(bestFit == NULL && __my_malloc_globalObject.block != NULL) {
 
 		bestFit = (BlockInformation*)(((pseudoByte*)__my_malloc_globalObject.block) +
 		                              sizeof(MemoryBlockinformation));
@@ -331,21 +325,24 @@ INTERNAL_FUNCTION void* __internal__my_malloc(uint64_t size, BlockInformation* f
 		}
 	}
 
-	const uint64_t blockSize = size_of_double_pointer_block(bestFit);
+	const uint64_t blockSize =
+	    __my_malloc_globalObject.block == NULL ? 0 : size_of_double_pointer_block(bestFit);
 
 	// if the one that fit the best is not big enough, it means no block is big enough! If it's not
 	// free, than there was no free block
-	if(bestFit == NULL || bestFit->status != FREE || blockSize < size) {
+	if(__my_malloc_globalObject.block == NULL || bestFit == NULL || bestFit->status != FREE ||
+	   blockSize < size) {
 
-		//  allocate a new memory block, if the size is bigger than pool size (size of first
-		// memory block), just request a bigger one, we can do that here, try first to get a
+		//  allocate a new memory block, if the size is bigger than pool size, just request a bigger
+		//  one, we can do that here, try first to get a
 		// continuos block, if that works, increase the size of the current one, otherwise just make
 		// a new MemoryBlockInfo structure.
 
-		MemoryBlockinformation* lastMemoryBlock = get_last_memory_block();
-		void* preferredAddress = ((pseudoByte*)lastMemoryBlock) + lastMemoryBlock->size;
+		MemoryBlockinformation* lastMemoryBlock = get_last_memory_block(); // may be NULL
+		void* preferredAddress =
+		    lastMemoryBlock == NULL ? NULL : ((pseudoByte*)lastMemoryBlock) + lastMemoryBlock->size;
 
-		uint64_t preferredSize = ((MemoryBlockinformation*)__my_malloc_globalObject.block)->size;
+		uint64_t preferredSize = __my_malloc_globalObject.defaultMemoryBlockSize;
 
 		if(preferredSize - sizeof(MemoryBlockinformation) - sizeof(BlockInformation) < size) {
 			preferredSize = size + sizeof(MemoryBlockinformation) - sizeof(BlockInformation);
@@ -359,6 +356,8 @@ INTERNAL_FUNCTION void* __internal__my_malloc(uint64_t size, BlockInformation* f
 			return NULL;
 		}
 
+		MEMCHECK_REMOVE_INTERNAL_USE(newRegion, preferredSize);
+
 		MemoryBlockinformation* newMemoryBlock = (MemoryBlockinformation*)newRegion;
 
 		MEMCHECK_DEFINE_INTERNAL_USE(newMemoryBlock, sizeof(MemoryBlockinformation));
@@ -369,7 +368,11 @@ INTERNAL_FUNCTION void* __internal__my_malloc(uint64_t size, BlockInformation* f
 		block_number_t blockNumber = get_next_free_memory_number();
 		newMemoryBlock->number = blockNumber;
 
-		lastMemoryBlock->next = newMemoryBlock;
+		if(lastMemoryBlock == NULL) {
+			__my_malloc_globalObject.block = newMemoryBlock;
+		} else {
+			lastMemoryBlock->next = newMemoryBlock;
+		}
 
 		BlockInformation* newBlock =
 		    (BlockInformation*)((pseudoByte*)newRegion + sizeof(MemoryBlockinformation));
@@ -381,18 +384,22 @@ INTERNAL_FUNCTION void* __internal__my_malloc(uint64_t size, BlockInformation* f
 		newBlock->status = FREE;
 		newBlock->blockNumber = blockNumber;
 
-		// FINd previous block, to set the nextBlock there to the newBlock and set the previousBlock
-		// on the newBlock
+		// FIND previous block, to set the nextBlock there to the newBlock and set the previousBlock
+		// on the newBlock, if there is a previous block (not possible, if there where 0 blocks)
 
-		BlockInformation* lastBlockOfLastMemBlock =
-		    (BlockInformation*)(((pseudoByte*)lastMemoryBlock) + sizeof(MemoryBlockinformation));
+		if(lastMemoryBlock != NULL) {
 
-		while(lastBlockOfLastMemBlock->nextBlock != NULL) {
-			lastBlockOfLastMemBlock = (BlockInformation*)lastBlockOfLastMemBlock->nextBlock;
+			BlockInformation* lastBlockOfLastMemBlock =
+			    (BlockInformation*)(((pseudoByte*)lastMemoryBlock) +
+			                        sizeof(MemoryBlockinformation));
+
+			while(lastBlockOfLastMemBlock->nextBlock != NULL) {
+				lastBlockOfLastMemBlock = (BlockInformation*)lastBlockOfLastMemBlock->nextBlock;
+			}
+
+			newBlock->previousBlock = lastBlockOfLastMemBlock;
+			lastBlockOfLastMemBlock->nextBlock = newBlock;
 		}
-
-		newBlock->previousBlock = lastBlockOfLastMemBlock;
-		lastBlockOfLastMemBlock->nextBlock = newBlock;
 
 		// Now call internal malloc with the new block as hint, to use it, without duplicating code
 		// and searching for it, if we already have it
@@ -453,7 +460,7 @@ void* my_malloc(uint64_t size) {
 #if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
 	int result = pthread_mutex_lock(&__my_malloc_globalObject.mutex);
 
-	if(__my_malloc_globalObject.block == NULL) {
+	if(__my_malloc_globalObject.defaultMemoryBlockSize == 0) {
 		fprintf(stderr, "Calling malloc before initializing the allocator is prohibited!\n");
 		exit(1);
 	}
@@ -484,7 +491,7 @@ INTERNAL_FUNCTION void __internal__my_free(void* ptr) {
 	// calling my_free without initializing the allocator doesn't work, if that is the case,
 	// likely the uninitialized mutex access before this will crash the program, but that is here
 	// for safety measures! AND ALSO in the case of uninitialized allocator in the thread local case
-	if(__my_malloc_globalObject.block == NULL) {
+	if(__my_malloc_globalObject.defaultMemoryBlockSize == 0) {
 		fprintf(stderr, "Calling free before initializing the allocator is prohibited!\n");
 		exit(1);
 	}
@@ -573,7 +580,8 @@ INTERNAL_FUNCTION void __internal__my_free(void* ptr) {
 	        ((pseudoByte*)currentMemoryBlock + currentMemoryBlock->size) ||
 	    (pseudoByte*)potentialFirstBlock->nextBlock < ((pseudoByte*)currentMemoryBlock))) {
 
-		// now remove this block with munmap, if it isn't the last one
+		// now remove this block with munmap, pay attention to the last one, we have to adjust the
+		// global value there!
 
 		// since we have no double pointers, the linked list has to be traversed, and the previous
 		// (if there is one) block has to be found and the next pointer has to be adjusted, it has
@@ -582,11 +590,12 @@ INTERNAL_FUNCTION void __internal__my_free(void* ptr) {
 
 		if(__my_malloc_globalObject.block == currentMemoryBlock) {
 			if(currentMemoryBlock->next == NULL) {
-				// the last memory block can't be deleted!
-				return;
-			}
+				// the last memory block can be deleted
+				__my_malloc_globalObject.block = NULL;
 
-			__my_malloc_globalObject.block = currentMemoryBlock->next;
+			} else {
+				__my_malloc_globalObject.block = currentMemoryBlock->next; // may be NULL
+			}
 
 		} else {
 
@@ -613,7 +622,7 @@ INTERNAL_FUNCTION void __internal__my_free(void* ptr) {
 			}
 		}
 
-		// first remove the current FREE block, that is in this to be deleted memory block
+		//  remove the current FREE block, that is in this to be deleted memory block
 		if(potentialFirstBlock->nextBlock != NULL) {
 			((BlockInformation*)potentialFirstBlock->nextBlock)->previousBlock =
 			    potentialFirstBlock->previousBlock; // may be NULL
@@ -977,37 +986,72 @@ void* my_realloc(void* ptr, uint64_t size) {
  * every call to free and malloc is thread safe in both cases. If this fails, the program crashes.
  * No error is returned
  *
+ * By default the allocator doesn't allocate a memory block, it creates a block in the first called
+ * malloc. But you can force the creation of, one, if you wish so, but free may remove the last one,
+ * no guarantee there. This whole thing would largely benefit programs, that don't use any dynamic
+ * memory, but use this malloc, so no mmap call will be issued and no memory is required, if they
+ * don't opt in into it
+ *
  */
-void my_allocator_init(uint64_t size) {
+
+void my_allocator_init(uint64_t size, bool force_alloc) {
 	__my_malloc_globalObject.block = NULL;
+	__my_malloc_globalObject.defaultMemoryBlockSize = size;
 	// MAP_ANONYMOUS means, that
 	//  "The mapping is not backed by any file; its contents are initialized to zero.  The fd
 	//  argument is ignored; however, some implementations require fd to be -1 if MAP_ANONYMOUS (or
 	//  MAP_ANON)  is  specified, and portable applications should ensure this.  The offset
 	//  argument should be zero." ~ man page
 
-	// this region is initalized with 0s
-	__my_malloc_globalObject.block =
-	    mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if(force_alloc) {
 
-	// see: https://github.com/torvalds/linux/blob/master/tools/include/nolibc/sys.h#L698-L708
-	// example:
-	// https://github.com/Apress/low-level-programming/blob/master/listings/chap4/mmap/mmap.asm
-	// with sysvall, the result is an address, but with this you can check for errors!
+		// this region is initalized with 0s
+		__my_malloc_globalObject.block =
+		    mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
-	/* 0xfffffffffffff000
+		// see: https://github.com/torvalds/linux/blob/master/tools/include/nolibc/sys.h#L698-L708
+		// example:
+		// https://github.com/Apress/low-level-programming/blob/master/listings/chap4/mmap/mmap.asm
+		// with sysvall, the result is an address, but with this you can check for errors!
 
-	if ((unsigned long)ret >= -4095UL) { // 0xfffffffffffff000
-	    SET_ERRNO(-(long)ret);
-	    ret = MAP_FAILED;
+		/* 0xfffffffffffff000
+
+		if ((unsigned long)ret >= -4095UL) { // 0xfffffffffffff000
+		    SET_ERRNO(-(long)ret);
+		    ret = MAP_FAILED;
+		}
+		 */
+		if(__my_malloc_globalObject.block == MAP_FAILED) {
+			__my_malloc_globalObject.block = NULL;
+			printErrorAndExit("ERROR: Failed to allocate memory in the allocator: %s\n",
+			                  strerror(errno));
+		}
+
+		// FREE is set with the 0 initialized region automatically (only here!)
+
+		MEMCHECK_REMOVE_INTERNAL_USE(__my_malloc_globalObject.block, size);
+
+		// initialize the first memoryBlock
+		MemoryBlockinformation* firstMemoryBlock =
+		    (MemoryBlockinformation*)__my_malloc_globalObject.block;
+
+		MEMCHECK_DEFINE_INTERNAL_USE(firstMemoryBlock, sizeof(MemoryBlockinformation));
+
+		firstMemoryBlock->size = size;
+		firstMemoryBlock->number = 0;
+		firstMemoryBlock->next = NULL;
+
+		// initialize the first block
+		BlockInformation* firstBlock =
+		    (BlockInformation*)((pseudoByte*)firstMemoryBlock + sizeof(MemoryBlockinformation));
+
+		MEMCHECK_DEFINE_INTERNAL_USE(firstBlock, sizeof(BlockInformation));
+
+		firstBlock->nextBlock = NULL;
+		firstBlock->previousBlock = NULL;
+		firstBlock->status = FREE;
+		firstBlock->blockNumber = 0;
 	}
-	 */
-	if(__my_malloc_globalObject.block == MAP_FAILED) {
-		__my_malloc_globalObject.block = NULL;
-		printErrorAndExit("ERROR: Failed to allocate memory in the allocator: %s\n",
-		                  strerror(errno));
-	}
-	// FREE is set with the 0 initialized region automatically (only here!)
 
 #if !defined(_ALLOCATOR_NOT_MT_SAVE) && _PER_THREAD_ALLOCATOR != 1
 	// initialize the mutex, use default as attr
@@ -1015,28 +1059,6 @@ void my_allocator_init(uint64_t size) {
 	checkResultForThreadErrorAndExit("INTERNAL: An Error occurred while trying to initializing the "
 	                                 "internal mutex for the allocator");
 #endif
-	MEMCHECK_REMOVE_INTERNAL_USE(__my_malloc_globalObject.block, size);
-
-	// initialize the first memoryBlock
-	MemoryBlockinformation* firstMemoryBlock =
-	    (MemoryBlockinformation*)__my_malloc_globalObject.block;
-
-	MEMCHECK_DEFINE_INTERNAL_USE(firstMemoryBlock, sizeof(MemoryBlockinformation));
-
-	firstMemoryBlock->size = size;
-	firstMemoryBlock->number = 0;
-	firstMemoryBlock->next = NULL;
-
-	// initialize the first block
-	BlockInformation* firstBlock =
-	    (BlockInformation*)((pseudoByte*)firstMemoryBlock + sizeof(MemoryBlockinformation));
-
-	MEMCHECK_DEFINE_INTERNAL_USE(firstBlock, sizeof(BlockInformation));
-
-	firstBlock->nextBlock = NULL;
-	firstBlock->previousBlock = NULL;
-	firstBlock->status = FREE;
-	firstBlock->blockNumber = 0;
 
 // my_allocator_destroy is not always MT safe, in the thread local it is, but in the mutex case, it
 // isn't so not using it there, in the mutex case, the caller that called the initialization HAS to

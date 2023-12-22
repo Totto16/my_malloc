@@ -11,7 +11,7 @@
 #define STATIC_MEMORYBLOCK_OVERHEAD (24UL)
 
 TEST(MyMalloc, normalOperations) {
-	my_allocator_init(POOL_SIZE);
+	my_allocator_init(POOL_SIZE, true);
 
 	void* const ptr1 = my_malloc(1024);
 	EXPECT_NE(ptr1, nullptr);
@@ -78,7 +78,7 @@ TEST(MyMalloc, normalOperations) {
 }
 
 TEST(MyMalloc, reallocOperations) {
-	my_allocator_init(POOL_SIZE);
+	my_allocator_init(POOL_SIZE, true);
 
 	// the same as my_malloc(1024)
 	void* const ptr1 = my_realloc(nullptr, 1024);
@@ -137,7 +137,7 @@ TEST(MyMalloc, callBeforeInitializing) {
 
 TEST(MyMalloc, doubleFree) {
 
-	my_allocator_init(POOL_SIZE);
+	my_allocator_init(POOL_SIZE, true);
 
 	void* const ptr1 = my_malloc(1024);
 	EXPECT_NE(ptr1, nullptr);
@@ -150,7 +150,7 @@ TEST(MyMalloc, doubleFree) {
 
 TEST(MyMalloc, reallocFreedBlock) {
 
-	my_allocator_init(POOL_SIZE);
+	my_allocator_init(POOL_SIZE, true);
 
 	void* const ptr1 = my_malloc(1024);
 	EXPECT_NE(ptr1, nullptr);
@@ -163,14 +163,12 @@ TEST(MyMalloc, reallocFreedBlock) {
 
 TEST(MyMalloc, initializeError) {
 
-	EXPECT_EXIT({ my_allocator_init(POOL_SIZE * POOL_SIZE); }, ::testing::ExitedWithCode(1),
+	EXPECT_EXIT({ my_allocator_init(POOL_SIZE * POOL_SIZE, true); }, ::testing::ExitedWithCode(1),
 	            "ERROR: Failed to allocate memory in the allocator: Cannot allocate memory");
 }
 
 TEST(MyMalloc, doubleDestroy) {
-	my_allocator_init(POOL_SIZE);
-
-	my_allocator_init(POOL_SIZE);
+	my_allocator_init(POOL_SIZE, true);
 
 	void* const ptr1 = my_malloc(1024);
 	EXPECT_NE(ptr1, nullptr);
@@ -183,7 +181,7 @@ TEST(MyMalloc, doubleDestroy) {
 
 TEST(MyMalloc, reallocEdgeCases) {
 
-	my_allocator_init(POOL_SIZE);
+	my_allocator_init(POOL_SIZE, true);
 
 	// the same as my_malloc
 	void* ptr1 = my_realloc(nullptr, 1010);

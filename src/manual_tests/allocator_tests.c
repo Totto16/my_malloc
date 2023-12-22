@@ -25,7 +25,7 @@
 #define POOL_SIZE ((uint64_t)(1024U * 1024U * 256U))
 
 void test_best_fit_allocator(void) {
-	my_allocator_init(POOL_SIZE);
+	my_allocator_init(POOL_SIZE, true);
 
 	void* const ptr1 = my_malloc(1024);
 	printf("ptr1: %p\n", ptr1);
@@ -98,7 +98,7 @@ void test_best_fit_allocator(void) {
 
 #ifdef _WITH_REALLOC
 void test_realloc(void) {
-	my_allocator_init(POOL_SIZE);
+	my_allocator_init(POOL_SIZE, true);
 
 	void* const ptr1 = my_malloc(1024);
 	ASSERT(ptr1 != NULL);

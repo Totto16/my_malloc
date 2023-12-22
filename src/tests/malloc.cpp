@@ -22,6 +22,8 @@ TEST(MyMalloc, normalOperations) {
 	memset(ptr2, 0xFF, 1024);
 	const uint64_t overhead = (ptrdiff_t)ptr2 - (ptrdiff_t)ptr1 - 1024;
 
+	void* const startOfRegion = (unsigned char*)ptr1 - STATIC_MEMORYBLOCK_OVERHEAD - overhead;
+
 	my_free(ptr1);
 	my_free(nullptr);
 
@@ -64,11 +66,13 @@ TEST(MyMalloc, normalOperations) {
 	void* ptr10 = my_malloc(POOL_SIZE - overhead - STATIC_MEMORYBLOCK_OVERHEAD);
 	EXPECT_NE(ptr10, nullptr);
 
-	// Check OOM result
+	// Check new mapped block, so that this memory is after the first allocation
 	void* ptr11 = my_malloc(1);
-	EXPECT_EQ(ptr11, nullptr);
+	EXPECT_TRUE((unsigned char*)ptr11 > (unsigned char*)startOfRegion + POOL_SIZE ||
+	            (unsigned char*)ptr11 < (unsigned char*)startOfRegion);
 
 	my_free(ptr10);
+	my_free(ptr11);
 
 	my_allocator_destroy();
 }
@@ -95,6 +99,8 @@ TEST(MyMalloc, reallocOperations) {
 
 	const uint64_t overhead = (ptrdiff_t)ptr3 - (ptrdiff_t)ptr2 - 3072;
 
+	void* const startOfRegion = (unsigned char*)ptr1 - STATIC_MEMORYBLOCK_OVERHEAD - overhead;
+
 	void* ptr4 = my_realloc(ptr1, 1024 * 1024);
 	EXPECT_NE(ptr2, ptr4);
 	for(size_t i = 0; i < 1024; ++i) {
@@ -112,11 +118,13 @@ TEST(MyMalloc, reallocOperations) {
 	void* ptr5 = my_malloc(POOL_SIZE - overhead - STATIC_MEMORYBLOCK_OVERHEAD);
 	EXPECT_NE(ptr5, nullptr);
 
-	// Check OOM result
+	// Check new mapped block, so that this memory is after the first allocation
 	void* ptr6 = my_malloc(1);
-	EXPECT_EQ(ptr6, nullptr);
+	EXPECT_TRUE((unsigned char*)ptr6 > (unsigned char*)startOfRegion + POOL_SIZE ||
+	            (unsigned char*)ptr6 < (unsigned char*)startOfRegion);
 
 	my_free(ptr5);
+	my_free(ptr6);
 
 	my_allocator_destroy();
 }
